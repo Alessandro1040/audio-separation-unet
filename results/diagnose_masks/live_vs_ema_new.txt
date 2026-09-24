@@ -1,0 +1,7 @@
+checkpoint checkpoints/fixed/best.pt (step 2250), device=cpu, 8 chunks of 5.0s
+estimator               vocals   drums    bass   other    mean    loss
+EMA weights               1.35   -7.61    4.23   -3.30   -1.33   0.114
+live weights             -3.06   -6.67    5.55   -2.72   -1.72   0.107
+oracle ideal mask        10.48    3.48   12.05    6.20    8.05   0.041
+mixture as estimate      -6.67  -10.05   -0.45   -8.54   -6.43   0.220
+zero output             -80.00  -80.00  -80.00  -80.00  -80.00   0.233

@@ -14,20 +14,43 @@ float32, exponential-moving-average weights of the best validation checkpoint).
 | Output | complex ideal-ratio masks (real + imag) for 4 sources × 2 channels = 16 maps, `tanh` bounded |
 | Reconstruction | mask ⊙ mixture spectrum → iSTFT (exact, 50 % overlap) → mixture consistency projection |
 | Training data | MUSDB18 (compressed), 86 songs from the `train` split; 14 songs held out for validation; never trained on the `test` split |
-| Training budget | ~1200 optimization steps, batch 4 × 5 s crops, AdamW, hybrid loss (waveform L1 + L1 on `|X|^0.3` magnitudes, SI-SDR term in the last 300 steps), heavy augmentation (cross-song stem swap/remix, gains, channel swap, polarity, source dropout) |
+| Training budget | 2500 optimization steps (10 epochs × 250), batch 4 × 5 s crops, AdamW, peak LR 3e-4 with a 250-step linear warm-up and cosine decay to 5 %, hybrid loss (waveform L1 + L1 on `|X|^0.3` magnitudes, mixture consistency), heavy augmentation (cross-song swap of the **same** stem, full remix, gains, channel swap, polarity, source dropout) |
 | Hardware | Apple M5, 16 GB, MPS (~1.2 s/step) |
+
+## History: why the previous export was withdrawn
+
+The first version of this file (step 1200 of `runs/unet`) did not separate anything: all four
+estimates were the mixture with a per-source gain. `scripts/diagnose_masks.py` measured it on
+validation chunks - the model reached **−3.94 dB** mean SI-SDR while the best per-source
+*fader* (the optimal 50 ms time-varying gain on the mixture, i.e. pure volume automation)
+reached **−2.55 dB**, and 96 % of the `bass` mask's variance was a fixed frequency profile
+with 97.8 % of its energy above 2 kHz.
+
+The cause was in the training *data*, not in the architecture: `_augment` swapped a stem with
+a *random* stem of the donor song instead of the same one, so three targets out of four
+carried a different instrument (measured: 36.5 % of all targets mislabelled; 0.0 % after the
+fix). The mixture does not reveal which instrument was substituted, so the loss-minimising
+answer for every head was the conditional mean - a per-source gain on the mixture. A second
+bug compounded it: `lr_at` restarted a resumed run at the schedule floor (~5e-6), so "just
+train longer" did nothing.
+
+Both are fixed; the README section *Why the first trained model only changed the volumes*
+has the controlled A/B (same seed, same hyper-parameters, only the swap line differs:
+−6.74 dB → −1.53 dB after 600 steps on the procedural dataset). **The weights in this file
+are the retrained model.**
 
 ## Measured quality
 
 | metric | value | notes |
 | --- | --- | --- |
-| validation SI-SDR (14 held-out songs) | **−7.85 dB** | chunk SI-SDR, EMA weights, model-selection metric |
-| test-set SI-SDR, 10 songs | **−8.29 dB** | vs **−9.99 dB** for the trivial "mixture as every source" baseline → **+1.70 dB**, wins 9/10 songs |
-| test-set BSS-Eval (2 songs × 60 s) | SDR **+1.16 dB**, SIR −2.84 dB, SAR **+19.32 dB** | 1 s frames, median over frames |
+| validation SI-SDR (14 held-out songs) | **−5.76 dB** | chunk SI-SDR, EMA weights, model-selection metric (best step 2250) |
+| test-set SI-SDR, 10 songs | **−6.40 dB** | vs **−9.99 dB** for the trivial "mixture as every source" baseline → **+3.59 dB**, and +1.89 dB better than the step-1200 checkpoint, which it beats on 9/10 songs |
+| vs the strongest "volume only" baseline | **+1.22 dB** | best per-source fader on 4 validation chunks: −2.55 dB vs −1.33 dB for this model |
+| test-set BSS-Eval (2 songs × 60 s) | in progress | the ~15 min `mir_eval` run for this checkpoint was still in flight when this table was written; `results/bss_eval_2songs.json` currently holds the step-1200 numbers (SDR +1.16 dB, SIR −2.84 dB, SAR +19.32 dB) |
 | oracle ideal-ratio mask (ceiling for this STFT/architecture) | +8.05 dB SI-SDR | measured with `scripts/oracle_mask_baseline.py` |
 
-Per source (10 test songs): `other` −3.56 dB, `drums` −4.70 dB, `bass` −5.43 dB,
-**`vocals` −16.76 dB** (the hard one).
+Per source (10 test songs): `drums` −3.69 dB, `other` −2.67 dB, `bass` −2.64 dB,
+**`vocals` −14.35 dB** (the hard one: it overlaps everything in time and frequency).
 
 ## What the model actually learned (diagnostics from `src/analyze.py`)
 

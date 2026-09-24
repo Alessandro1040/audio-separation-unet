@@ -1,0 +1,19 @@
+checkpoint checkpoints/best_step1200.pt (step 1200), device=cpu, 4 chunks of 5.0s, fader frame 50 ms
+
+SI-SDR per source (dB): what the network does, and what pure volume changes do
+estimator               vocals   drums    bass   other    mean
+model                    -3.96   -9.76    3.34   -5.37   -3.94
+mixture as estimate      -6.67  -10.05   -0.45   -8.54   -6.43
+best static gain         -6.67  -10.05   -0.45   -8.54   -6.43
+best fader               -1.84   -3.50    1.68   -6.53   -2.55
+oracle ideal mask        10.48    3.48   12.05    6.20    8.05
+
+predicted mask: F/T/FxT are shares of its variance, low/high are mean |mask| per bin
+stem      mean|m|     cv  F share  T share    FxT    low   high
+vocals      0.177   0.26     0.75     0.03   0.21   0.11   0.18
+drums       0.196   0.35     0.76     0.05   0.18   0.17   0.21
+bass        0.118   1.02     0.95     0.01   0.04   0.21   0.12
+other       0.240   0.38     0.81     0.05   0.14   0.16   0.24
+
+A mask that only re-levels the mixture has cv ~ 0; a mask that really separates
+puts its variance in the FxT term (the only term that can lift a source out of a bin).

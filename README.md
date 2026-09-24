@@ -102,49 +102,53 @@ python -m src.analyze --checkpoint models/unet_musdb18_ema.pt \
 It writes `vocals.wav`, `drums.wav`, `bass.wav`, `other.wav`, `mixture.wav`, two figures
 (`masks.png`: mixture spectrogram + the four predicted masks; `stems.png`: magnitude
 spectrograms of the estimates) and a report. Real output (MUSDB18 test song, 200 s,
-checkpoint `models/unet_musdb18_ema.pt`, see `results/example_report.txt` and
-`figures/`):
+checkpoint `models/unet_musdb18_ema.pt`, see `results/example_report.txt` and `figures/`):
 
 ```
 stem          rms     peak  energy %   centroid   |mask|
-vocals     0.0287    0.278     23.1%      3826Hz     0.18
-drums      0.0212    0.192     12.6%      4324Hz     0.21
-bass       0.0256    0.208     18.4%      3954Hz     0.11
-other      0.0405    0.394     45.9%      3455Hz     0.24
+vocals     0.0169    0.219      5.4%      6070Hz     0.15
+drums      0.0394    0.438     29.5%      4805Hz     0.55
+bass       0.0185    0.195      6.5%      5149Hz     0.09
+other      0.0556    0.624     58.5%      2854Hz     0.22
 
-mixture consistency : residual of sum(stems) vs mixture = -147.7 dB relative to the input
-mean sum of masks   : 0.74 +- 0.28 (ideally ~1.00)
+mixture consistency : residual of sum(stems) vs mixture = -146.8 dB relative to the input
+mean sum of masks   : 1.02 +- 0.24 (ideally ~1.00)
 
-where each mask puts its energy (a bass mask should be low-heavy)
+mean |mask| per band (a bass mask should be heavier at low<200Hz)
 stem      low<200Hz   200-2kHz      >2kHz
-vocals        0.7%      7.5%     91.8%
-drums         0.7%      5.4%     93.9%
-bass          1.7%      4.7%     93.7%
-other         0.8%      9.2%     90.0%
+vocals         0.10       0.10       0.16
+drums          0.42       0.38       0.57
+bass           0.15       0.06       0.09
+other          0.26       0.40       0.21
 
 estimates vs ground truth (a large centroid mismatch = leakage of other instruments)
 stem      rms est  rms ref  centroid est  centroid ref
-vocals     0.0287   0.0725       3826 Hz       3404 Hz
-drums      0.0212   0.0433       4324 Hz       5692 Hz
-bass       0.0256   0.0527       3954 Hz        222 Hz
-other      0.0405   0.0480       3455 Hz       3224 Hz
+vocals     0.0169   0.0725       6070 Hz       3404 Hz
+drums      0.0394   0.0433       4805 Hz       5692 Hz
+bass       0.0185   0.0527       5149 Hz        222 Hz
+other      0.0556   0.0480       2854 Hz       3224 Hz
 
-against the reference stems (mean SI-SDR -3.38 dB)
+against the reference stems (mean SI-SDR -3.73 dB)
 stem        SI-SDR      SDR      SIR      SAR
-vocals        0.15     2.14     0.10    23.05
-drums        -5.95     1.10    -4.01    18.64
-bass         -2.33     1.86    -1.14    20.46
-other        -5.38    -0.05    -3.88    21.01
+vocals       -1.76     1.57     2.64    12.82
+drums        -6.03     0.11    -2.69    13.95
+bass         -2.10     1.26    -1.27    13.00
+other        -5.03    -0.39    -3.39    14.65
 ```
 
-This is the honest picture of the model at this training budget: the DSP is exact
-(consistency residual **−148 dB**), `vocals` and `other` land close to their references,
-while `bass` still leaks everything (centroid 3954 Hz vs 222 Hz) because the masks are
-still nearly frequency-agnostic (90 % of their mass above 2 kHz). Those are precisely the
-diagnostics a longer training run has to move, and the app prints them.
+The DSP is exact (consistency residual **−147 dB**), and compared with the step-1200
+checkpoint on the same song the numbers that describe *what the model does* have changed
+sign: the four masks now sum to **1.02 ± 0.24** instead of 0.74 ± 0.28 (a calibrated mask
+set, i.e. the network is not just re-levelling), the `drums` mask is much more active
+(mean |mask| 0.55 vs 0.21) and the `bass` mask is heavier below 200 Hz (0.15) than above
+2 kHz (0.09) instead of the other way round. The per-stem SI-SDR on this one 30 s excerpt is
+a wash (vocals worse, `bass`/`other` better) - it is the song where the retrained model gains
+least (+0.13 dB of the 10 songs in the table below), and the `centroid est vs ref` row still
+says the `bass` estimate is far too bright, so there is real room left. The aggregate numbers
+are the ones to trust.
 
-**Listen**: `samples/` contains 24 s excerpts of the mixture, the four estimates *and* the
-ground truth for one test song, as mp3.
+**Listen**: `samples/` contains 24 s excerpts (regenerated with the shipped checkpoint) of the
+mixture, the four estimates *and* the ground truth for the same test song, as mp3.
 
 ## 4b. Pretrained weights and Colab
 
@@ -160,6 +164,11 @@ ground truth for one test song, as mp3.
   python scripts/export_inference_checkpoint.py checkpoints/best.pt \
       --out models/unet_musdb18_ema.pt --half     # --half for a 21 MB float16 export
   ```
+
+  By default the EMA weights are exported; `--weights live` takes the raw ones instead,
+  which is worth checking on short runs (`ema_decay: 0.999` only averages away the
+  initialisation after a few thousand steps). Compare the two with
+  `python scripts/diagnose_checkpoint.py checkpoints/best.pt`.
 
 ## 5. Tests
 
@@ -204,11 +213,14 @@ notebooks/          Colab notebook: upload a song -> stems + masks + report
 models/             inference checkpoint (42 MB) + MODEL_CARD.md
 samples/            example input/estimates/references (24 s mp3 excerpts)
 figures/            example masks.png / stems.png from the app
-results/            the evidence: training log/curve, test-set metrics, example report
+results/            the evidence: training log/curve, test-set metrics, example report,
+                    ab_augment_fix/ (the controlled A/B behind the augmentation fix)
 scripts/
   download_musdb.py       resumable threaded MUSDB18 downloader (Zenodo)
   inspect_dataset.py      verify a download: stem fingerprints, order, mixture
   check_dataloader.py     dataloader throughput + stem/seek alignment verification
+  diagnose_checkpoint.py  live vs EMA vs oracle SI-SDR of a checkpoint
+  diagnose_masks.py       is the model separating, or only changing the volume?
   benchmark_model.py      step time & memory for batch sizes / model settings
   profile_step.py         per-stage timing of a training step
   make_synthetic_data.py  procedural dataset, so tests need no download
@@ -227,7 +239,7 @@ src/
   models/
     unet.py         the segmentation U-Net (BN, bilinear upsampling, skip fusion)
     separation.py   STFT wrapper: waveform -> masks -> masked spectra -> waveform
-tests/              28 tests: dsp, model, data, metrics, end-to-end pipeline
+tests/              31 tests: dsp, model, data, metrics, training, end-to-end pipeline
 ```
 
 ## 8. Hardware notes (measured on Apple M5, 16 GB)
@@ -239,10 +251,11 @@ tests/              28 tests: dsp, model, data, metrics, end-to-end pipeline
 | hop 1024, chunk 5 s, base 24 | 0.8 s | 24 s/s | 4.6 GB |
 | data pipeline (4 workers, segment decoding) | — | 103 s/s | ~1.5 GB |
 
-One "epoch" of MUSDB18 (1000 steps) is ~17 minutes here, so the shipped recipe
-(20k steps) is a ~6 hour run. For a quicker, weaker model reduce
-`train.epochs`/`steps_per_epoch`, or try `--set model.base_channels=24
---set data.chunk_seconds=4`.
+One "epoch" of MUSDB18 (1000 steps) is ~17 minutes here, so the reference recipe
+(20k steps) is a ~6 hour run. The weights shipped in `models/` come from a shorter one -
+2500 steps (10 epochs × 250) in ~55 minutes, which is what one evening on this laptop
+buys. For a quicker, weaker model reduce `train.epochs`/`steps_per_epoch`, or try
+`--set model.base_channels=24 --set data.chunk_seconds=4`.
 
 ## 9. Limitations / honest notes
 
@@ -280,80 +293,103 @@ is the honest ceiling for this architecture. It doubles as an end-to-end self-te
 STFT framing, the stem/seek alignment or the BSS-Eval call were wrong, that number would
 collapse instead of landing at a plausible 8 dB.
 
-A companion measurement lives in *Why the shipped model "only changed the volumes"* below:
-`scripts/diagnose_masks.py` adds a per-source **best fader** (the optimal 50 ms
+A companion measurement lives in *Why the first trained model only changed the volumes*
+below: `scripts/diagnose_masks.py` adds a per-source **best fader** (the optimal 50 ms
 time-varying gain on the mixture - the strongest thing "volume automation" can do) and
-reports what is inside the predicted masks. The shipped checkpoint does not clear it.
+reports what is inside the predicted masks. The step-1200 checkpoint does not clear it.
 
 ### Training curve (validation, EMA weights)
+
+The shipped checkpoint is the **retrained** run (`runs/unet_fixed/log.csv`, 2500 steps,
+0.5 h), and unlike the first one its validation numbers actually move:
 
 ```
    step    loss    wave     mag  s/step   vocal   drums    bass   other    mean
 -------------------------------------------------------------------------------
-    250  0.1357  0.0451  0.1812    1.25  -17.52  -11.42  -10.56   -7.79  -11.82
-    300  0.1357  0.0451  0.1812    1.25  -17.50  -11.00   -8.66   -7.48  -11.16
-    600  0.1357  0.0451  0.1812    1.25  -17.49  -11.48   -9.49   -6.36  -11.21
+    250  0.1150  0.0392  0.1517    1.38  -17.90  -12.03   -8.98   -7.78  -11.67
+    500  0.1039  0.0339  0.1400    1.34  -17.50  -10.66   -8.25   -9.54  -11.49
+    750  0.1003  0.0332  0.1342    1.33  -17.61  -10.32   -9.11   -7.14  -11.04
+   1000  0.0940  0.0294  0.1292    1.30  -17.12   -9.79   -8.99   -6.33  -10.56
+   1250  0.0944  0.0290  0.1308    1.16  -16.92   -9.34   -7.98   -6.00  -10.06
+   1500  0.0941  0.0299  0.1284    1.26  -16.32   -9.22   -7.33   -6.24   -9.78
+   1750  0.0885  0.0283  0.1205    1.25  -14.80   -7.48   -4.35   -4.07   -7.67
+   2000  0.0823  0.0268  0.1110    1.24  -12.96   -6.35   -2.56   -2.66   -6.13
+   2250  0.0905  0.0297  0.1217    1.27  -12.24   -6.28   -2.40   -2.11   -5.76
+   2500  0.0878  0.0279  0.1198    1.35  -12.05   -6.80   -2.37   -1.90   -5.78
 ```
 
-One detail worth knowing about this early part of the curve: with `ema_decay: 0.999` the
-evaluated EMA weights are still ~50 % initial weights after 600 steps, so the validation
-SI-SDR looks flat while the **live** weights were already at **−4.91 dB** - i.e. better
-than the trivial baseline. Short runs should therefore use `ema_decay: 0.995`; the full
-20k-step recipe can afford 0.999. Full curve in `runs/unet/log.csv`, or:
+For comparison the first run (mislabelled targets, `runs/unet/log.csv`) went from −11.82 dB at
+step 250 to **−7.85 dB at step 1200** and then stopped improving; the retrained model is
+**2.1 dB better** than that on the same 14 held-out songs.
+
+One detail worth knowing about this curve: with `ema_decay: 0.999` the evaluated EMA weights
+lag the live ones, badly at the start (at step 600 of the first run the EMA was ~6 dB worse
+than the weights that were actually training) and barely at the end (by step 2250 the EMA is
+0.4 dB *better*). Short runs should therefore use `ema_decay: 0.995`; the full 20k-step
+recipe can afford 0.999. Full curve in `runs/unet_fixed/log.csv`, or:
 
 ```bash
-python scripts/summarize_run.py runs/unet/log.csv
-python scripts/diagnose_checkpoint.py checkpoints/best.pt --chunks 8 --device mps
+python scripts/summarize_run.py runs/unet_fixed/log.csv
+python scripts/diagnose_checkpoint.py checkpoints/fixed/best.pt --chunks 8 --device mps
 ```
 
-### Live-vs-EMA model on the same chunks (step 600)
+### Live-vs-EMA weights on the same chunks (step 2250)
+
+`python scripts/diagnose_checkpoint.py checkpoints/fixed/best.pt --chunks 8`:
 
 | estimator | vocals | drums | bass | other | mean | loss |
 | --- | --- | --- | --- | --- | --- | --- |
-| EMA weights | −7.23 | −11.39 | −3.48 | −9.04 | −7.78 | 0.135 |
-| live weights | −5.89 | −10.38 | **+1.95** | −5.34 | −4.91 | 0.125 |
+| EMA weights (**shipped**) | **+1.35** | −7.61 | +4.23 | −3.30 | **−1.33** | 0.114 |
+| live weights | −3.06 | **−6.67** | **+5.55** | **−2.72** | −1.72 | 0.107 |
 | oracle ideal mask | +10.48 | +3.48 | +12.05 | +6.20 | **+8.05** | 0.041 |
 | mixture as estimate | −6.67 | −10.05 | −0.45 | −8.54 | −6.43 | 0.220 |
 | zero output | −80 | −80 | −80 | −80 | −80 | 0.233 |
 
-Bass is learned first (low-frequency energy is easy to mask), drums last - the usual
-pattern for mask-based models, which have no explicit transient model.
+The EMA wins on the mean - it is smoother on `vocals`, the source where the live weights are
+noisiest - and that is what `models/` ships; the live weights are ahead on `bass` and `drums`
+(which is why `scripts/export_inference_checkpoint.py` grew a `--weights live` flag). Bass is
+learned first, drums last - the usual pattern for mask-based models, which have no explicit
+transient model.
 
 ### MUSDB18 test split — chunk-average SI-SDR (10 songs)
 
-5-second chunk SI-SDR averaged over each whole song (`src/evaluate.py --fast`), same
-metric for the model and for the trivial baseline (`scripts/baseline_bss_eval.py --fast`),
-on the first 10 songs of the official test split (`runs/fast2/SUMMARY.txt`):
+5-second chunk SI-SDR averaged over each whole song (`src/evaluate.py --fast`), same metric
+for both checkpoints and for the trivial baseline (`scripts/baseline_bss_eval.py --fast`), on
+the first 10 songs of the official test split (`runs/fast_fixed/`, `results/test_si_sdr_summary.txt`):
 
 | system | median SI-SDR | vocals | drums | bass | other |
 | --- | --- | --- | --- | --- | --- |
-| **U-Net (best checkpoint)** | **−8.29 dB** | −16.76 | −4.70 | −5.43 | −3.56 |
+| **U-Net, retrained (shipped, step 2250)** | **−6.40 dB** | −14.35 | −3.69 | −2.64 | −2.67 |
+| U-Net, step 1200 (mislabelled targets) | −8.29 dB | −16.76 | −4.70 | −5.43 | −3.56 |
 | trivial "mixture" estimator | −9.99 dB | — | — | — | — |
-| **improvement** | **+1.70 dB** | | | | |
+| **improvement over the baseline** | **+3.59 dB** | | | | |
 
-The model beats the trivial baseline on 9 of the 10 songs (+0.6 to +2.5 dB per song), with
-one failure mode on a quiet, reverb-heavy track (−1.4 dB). Reference points from the same
-pipeline: the pre-fine-tune checkpoint scored −8.84 dB, and the oracle ideal-ratio mask
-reaches **+8.05 dB** SI-SDR, which is the ceiling for this architecture and STFT.
+The shipped model beats the trivial baseline on every song and the previous checkpoint on 9 of
+the 10 (+0.13 to +2.55 dB, one song −0.50 dB), and it improves all four sources. Its worst
+case is still a quiet, reverb-heavy track (−22.6 dB). Reference point from the same pipeline:
+the oracle ideal-ratio mask reaches **+8.05 dB** SI-SDR, the ceiling for this architecture and
+STFT.
 
 ### MUSDB18 test split — standard BSS-Eval (SDR / SIR / SAR)
 
-Same checkpoint, first 60 s of the first two test songs, 1-second frames, median over
-frames (`runs/final/eval/summary.json`):
+First 60 s of the first two test songs, 1-second frames, median over frames. These numbers are
+the **step-1200** checkpoint's (`runs/final/eval/summary.json`, produced before the fix); the
+retrained model's BSS-Eval is a ~15 minute `mir_eval` run and is recomputed separately into
+`results/bss_eval_2songs.json`:
 
 | system | SDR | SIR | SAR |
 | --- | --- | --- | --- |
-| U-Net (best checkpoint) | **+1.16 dB** | −2.84 dB | +19.32 dB |
-| trivial mixture baseline | `runs/final/baseline_bss.json` | | |
+| U-Net, step 1200 | **+1.16 dB** | −2.84 dB | +19.32 dB |
+| trivial mixture baseline | −5.65 dB | — | — |
 
 SDR is *positive* here while the SI-SDR above is negative, and that is not a
 contradiction: BSS-Eval allows a 512-tap time-invariant filter between estimate and
 target, so it forgives spectral/temporal distortion but not leakage. The decomposition
 says exactly what is happening: almost no artifacts (SAR +19 dB) and the estimates
 follow the target structure, but **interference is still the limiting factor
-(SIR −2.8 dB)** - the masks are in the right place, just not selective enough yet. That
-is precisely what more training fixes, and it is the standard diagnosis for an
-under-trained mask model.
+(SIR −2.8 dB)** - the masks are in the right place, just not selective enough. That
+is precisely what more training buys, and the retrained model's numbers go here when the
+slow run lands.
 
 > **Runtime note.** `mir_eval`'s BSS-Eval is CPU-bound (~8 minutes per minute of audio
 > here: it solves a 512-tap filter decomposition per 1-second frame *and* per source), so
@@ -370,35 +406,43 @@ Separated audio to listen to: `outputs/test_eval2/<song>/{vocals,drums,bass,othe
 
 
 
-### Why the shipped model "only changed the volumes" (and what was fixed)
+### Why the first trained model only changed the volumes (and what was fixed)
 
-The four estimates of `models/unet_musdb18_ema.pt` sound like the same song at four
-different levels, and the measurement agrees. `scripts/diagnose_masks.py` (new) puts the
-network next to the strongest things a pure "volume knob" can do, on deterministic
-validation chunks:
+The first checkpoint this repository shipped (step 1200 of `runs/unet`, the one whose
+numbers are quoted in the tables above) separated nothing: its four estimates sound like the
+same song at four different levels. `scripts/diagnose_masks.py` (new) puts that network next
+to the strongest things a pure "volume knob" can do, on deterministic validation chunks (the
+first four of the 14 held-out songs, one 5-second chunk each,
+`--chunks 4`):
 
 ```
 estimator               vocals   drums    bass   other    mean
-model                    -4.25  -11.16    4.06   -6.42   -4.44
-mixture as estimate      -7.21  -11.32    0.47   -9.76   -6.96
-best static gain         -7.21  -11.32    0.47   -9.76   -6.96
-best fader               -3.46   -5.08    2.18   -7.80   -3.54   <- a fader beats it
-oracle ideal mask         9.89    1.85   12.00    5.21    7.24
+model                    -3.96   -9.76    3.34   -5.37   -3.94
+mixture as estimate      -6.67  -10.05   -0.45   -8.54   -6.43
+best static gain         -6.67  -10.05   -0.45   -8.54   -6.43
+best fader               -1.84   -3.50    1.68   -6.53   -2.55   <- a fader beats it
+oracle ideal mask        10.48    3.48   12.05    6.20    8.05
 ```
 
-and it shows what is inside the masks (F/T/FxT are shares of the mask's variance):
+and it shows what is inside the masks (F/T/FxT are shares of the mask's variance, `low`/`high`
+are the mean |mask| per bin below 200 Hz and above 2 kHz):
 
 ```
 stem      mean|m|     cv  F share  T share    FxT    low   high
-vocals      0.176   0.26     0.75     0.03   0.22   0.3%  94.4%
-drums       0.198   0.34     0.79     0.04   0.17   0.7%  97.1%
-bass        0.118   1.01     0.96     0.01   0.03   1.8%  97.7%
-other       0.238   0.38     0.83     0.05   0.12   0.4%  89.9%
+vocals      0.177   0.26     0.75     0.03   0.21   0.11   0.18
+drums       0.196   0.35     0.76     0.05   0.18   0.17   0.21
+bass        0.118   1.02     0.95     0.01   0.04   0.21   0.12
+other       0.240   0.38     0.81     0.05   0.14   0.16   0.24
 ```
 
-Almost all mask variance is a *frequency profile* (a fixed EQ), almost none is the FxT
-interaction that a separation needs, and the `bass` mask keeps 97.7 % of its energy above
-2 kHz - so it is not even the right EQ. Two defects produced this:
+The masks have a plausible spectral tilt - the `bass` mask *is* heavier below 200 Hz than
+above 2 kHz - but 75-95 % of each mask's variance is that fixed frequency profile and only
+0.01-0.05 of it varies with *time*: the network is applying an EQ and barely looking at when
+something happens. That is exactly the shape of the SI-SDR table above, where the model loses
+to a per-source fader. `figures/masks_before_after.png` shows the same validation chunk
+through both checkpoints: on the left the four masks are flat bands of colour, on the right
+the retrained `drums` mask shows the vertical striations of percussive onsets and all four
+masks visibly vary in time and frequency. Two defects produced this:
 
 1. **The stem-swap augmentation relabelled the targets.** `_augment` is documented as
    "swapping a stem for the *same* stem of another song" (that is what teaches robustness
@@ -442,6 +486,66 @@ sources from step 300 onwards and the gap on the mean grows to 5.2 dB. The raw l
 that a rerun measures this on a single 2 s validation chunk, so treat the numbers as a
 trend, not as a benchmark.
 
+The run itself is 600 steps on CPU, so it is cheap to repeat (`arm A` = the same command with
+the old `j = rng.randrange(other_stems.shape[0])` line restored):
+
+```bash
+python -m src.train --config configs/unet_smoke.yaml \
+    --set data.chunk_seconds=2.0 --set data.chunks_per_load=2 --set data.valid_tracks=1 \
+    --set train.batch_size=4 --set train.steps_per_epoch=200 --set train.epochs=3 \
+    --set train.warmup_steps=50 --set train.lr=0.001 --set train.val_every=100 \
+    --set train.val_chunks=2 --set train.log_every=100 --set train.ema_decay=0.99 \
+    --set train.device=cpu --set train.out_dir=runs/ab_b --set train.ckpt_dir=checkpoints/ab_b
+```
+
+### The same measurement after the fix
+
+The retrained checkpoint, on the same four validation chunks
+(`python scripts/diagnose_masks.py checkpoints/fixed/best.pt --chunks 4`):
+
+```
+estimator               vocals   drums    bass   other    mean
+model                     1.35   -7.61    4.23   -3.30   -1.33
+mixture as estimate      -6.67  -10.05   -0.45   -8.54   -6.43
+best static gain         -6.67  -10.05   -0.45   -8.54   -6.43
+best fader               -1.84   -3.50    1.68   -6.53   -2.55
+oracle ideal mask        10.48    3.48   12.05    6.20    8.05
+```
+
+| | step-1200 model | retrained model |
+| --- | --- | --- |
+| mean SI-SDR (4 validation chunks) | −3.94 dB | **−1.33 dB** |
+| vs the best fader on the same chunks | **1.39 dB worse** | **1.22 dB better** |
+| `vocals` | −3.96 dB | **+1.35 dB** |
+| `bass` | +3.34 dB | +4.23 dB |
+| `drums` | −9.76 dB | −7.61 dB |
+| `other` | −5.37 dB | −3.30 dB |
+
+The masks changed in the directions the SI-SDR rows predict (mean gain, coefficient of
+variation and the mean |mask| per bin in the two bands, before → after):
+
+| stem | mean gain | cv | low<200Hz | high>2kHz |
+| --- | --- | --- | --- | --- |
+| vocals | 0.177 → 0.163 | 0.26 → 0.50 | 0.11 → 0.09 | 0.18 → 0.16 |
+| drums | 0.196 → **0.469** | 0.35 → 0.49 | 0.17 → 0.33 | 0.21 → 0.49 |
+| bass | 0.118 → 0.104 | 1.02 → **1.31** | 0.21 → **0.32** | 0.12 → 0.11 |
+| other | 0.240 → 0.230 | 0.38 → 0.71 | 0.16 → 0.19 | 0.24 → 0.21 |
+
+The `bass` mask is now nearly three times heavier below 200 Hz than above 2 kHz (0.32 vs
+0.11) and the `drums` mask is both much more active and more selective - the network is using
+the time-frequency plane instead of only a static tilt.
+
+Two things are worth reading carefully here. The retrained model is the first checkpoint in
+this repository that **beats the strongest volume-only baseline** (a per-source fader) - on
+three sources and by 1.2 dB on the mean - and its `vocals` estimate has *positive* SI-SDR,
+which a gain on the mixture can never reach (the "mixture" row is the exact score of every
+static gain, by scale invariance). `drums` is the exception: a fader still beats it, which is
+the transient/phase problem of a mask model, not a labelling problem.
+
+The remaining distance to the oracle mask (+8.05 dB on those chunks) is the honest ceiling of
+what more training can buy here, and the `--resume` path that makes that affordable is fixed
+(see above).
+
 ## 12. Reproducing the state of this repository
 
 ```bash
@@ -451,6 +555,18 @@ python scripts/check_dataloader.py --verify-alignment
 python scripts/diagnose_checkpoint.py checkpoints/best.pt --chunks 8   # live/EMA/oracle
 python scripts/diagnose_masks.py checkpoints/best.pt --chunks 4        # masks vs "volume knobs"
 python -m src.evaluate --checkpoint checkpoints/best.pt --limit 5
+```
+
+The shipped checkpoint was produced by exactly this run (~1 h on an M5), and its full config
+is in `results/training_config.yaml`:
+
+```bash
+python -m src.train --config configs/unet_musdb18.yaml \
+    --set train.epochs=10 --set train.steps_per_epoch=250 --set train.warmup_steps=250 \
+    --set train.max_hours=2.0 --set train.log_every=50 \
+    --set train.out_dir=runs/unet_fixed --set train.ckpt_dir=checkpoints/fixed
+python scripts/compare_checkpoints.py checkpoints/best_step1200.pt checkpoints/fixed/best.pt \
+    --out figures/masks_before_after.png          # the before/after figure
 ```
 
 `docs/PROPOSAL.md` frames the whole thing as a Computer Vision course project

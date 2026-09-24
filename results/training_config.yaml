@@ -32,23 +32,23 @@ loss:
   waveform: 1.0
   magnitude: 0.5
   magnitude_compress: 0.3
-  si_sdr: 0.5
+  si_sdr: 0.0
   consistency: true
 train:
   batch_size: 4
-  lr: 0.0001
+  lr: 0.0003
   weight_decay: 1.0e-05
-  epochs: 4
-  steps_per_epoch: 300
-  warmup_steps: 500
+  epochs: 10
+  steps_per_epoch: 250
+  warmup_steps: 250
   grad_clip: 5.0
   amp: false
   ema_decay: 0.999
-  max_hours: 0.35
+  max_hours: 2.0
   seed: 1234
   device: auto
-  out_dir: runs/unet
-  ckpt_dir: checkpoints
+  out_dir: runs/unet_fixed
+  ckpt_dir: checkpoints/fixed
   val_chunks: 28
-  val_every: 300
-  log_every: 25
+  val_every: 250
+  log_every: 50

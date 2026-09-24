@@ -11,10 +11,10 @@
 | `... - vocals / drums / bass / other (ground truth).mp3` | the reference stems from MUSDB18 |
 
 Listening tip: compare `bass (U-Net estimate)` with `bass (ground truth)` — as the report
-in `runs/example_report.txt` says, the bass estimate has a spectral centroid of ~4 kHz
-against ~0.2 kHz for the reference, i.e. it still leaks other instruments. `vocals` and
-`other` are closer to their references. That is exactly what an under-trained mask model
-looks like, and it is why the app prints those numbers.
+in `results/example_report.txt` says, the bass estimate has a spectral centroid far above
+the reference's, i.e. it still leaks other instruments. `vocals` and `other` are closer to
+their references. That is exactly what an under-trained mask model looks like, and it is
+why the app prints those numbers.
 
 The corresponding figures are `figures/masks_example.png` (mixture spectrogram + the four
 predicted masks) and `figures/stems_example.png` (magnitude spectrograms of the estimates).

@@ -58,8 +58,8 @@ set. I numeri misurati sono in `README.md` (sezione *Results*).
 
 Aspettative realistiche: un U-Net addestrato da zero su 100 brani non raggiunge i sistemi
 allo stato dell'arte (~9 dB SDR con modelli waveform tipo Demucs, addestrati per settimane),
-ma supera in modo netto i baseline banali (il mix stesso come stima: SDR ≈ 0 dB) e
-permette tutti gli esperimenti interessanti:
+ma supera i baseline banali (il mix stesso come stima: SDR −5.7 dB, SI-SDR −6.4 dB misurati
+con lo stesso protocollo) di alcuni dB e permette tutti gli esperimenti interessanti:
 
 * loss diverse (solo magnitudine vs waveform + magnitudine, `L1` vs `L2`, loss multi-risoluzione)
 * maschera reale (IRM) vs maschera complessa (cIRM) vs fase stimata esplicitamente

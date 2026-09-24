@@ -27,7 +27,7 @@ import soundfile as sf
 import torch
 
 from .config import STEMS
-from .dsp import istft, load_audio, log_magnitude, stft
+from .dsp import load_audio, stft
 from .metrics import bss_eval_track_per_source, si_sdr_per_source
 from .models.separation import separate_long
 from .separate import load_model
@@ -224,23 +224,26 @@ def _report(model, cfg, mixture: torch.Tensor, estimates: torch.Tensor,
              "high_>2kHz": freqs >= 2000}
     band_profile: dict[str, dict[str, float]] = {}
     for i, name in enumerate(STEMS):
-        total = float(mask_mag[i].sum()) + 1e-12
+        # Mean |mask| *per bin* in each band, not the share of the total mask mass: the low
+        # band has ~9 STFT bins and the high band ~930, so a share of the total would mostly
+        # measure how many bins the band has (a flat mask with |m| = 1 everywhere would look
+        # "90 % high"). The mean per band makes an EQ claim testable: a bass mask has to be
+        # heavier at low_<200Hz than at high_>2kHz.
         band_profile[name] = {
-            band: float(mask_mag[i][..., mask, :].sum()) / total
-            for band, mask in bands.items()
+            band: float(mask_mag[i][..., mask, :].mean()) for band, mask in bands.items()
         }
     report["mask_statistics"] = {
         "mean_abs_mask_per_stem": {name: float(mask_mag[i].mean())
                                    for i, name in enumerate(STEMS)},
         "fraction_of_bins_above_0.5": {name: float((mask_mag[i] > 0.5).float().mean())
                                        for i, name in enumerate(STEMS)},
-        "mask_mass_per_frequency_band": band_profile,
+        "mean_abs_mask_per_frequency_band": band_profile,
         "mean_sum_of_masks": float(sum_masks.mean()),
         "std_sum_of_masks": float(sum_masks.std()),
         "note": "a well calibrated 4-source mask set sums to ~1 per bin; this model is "
                 "not trained for that explicitly, mixture consistency is enforced on the "
-                "waveform instead. The band profile shows where each mask puts its mass: "
-                "a bass mask should be concentrated in low_<200Hz",
+                "waveform instead. The band profile is the mean |mask| per band: a bass "
+                "mask should be heavier at low_<200Hz than at high_>2kHz",
     }
 
     if reference is not None:
@@ -300,14 +303,14 @@ def _format_report(report: dict) -> str:
         f"{report['mask_statistics']['mean_sum_of_masks']:.2f} +- "
         f"{report['mask_statistics']['std_sum_of_masks']:.2f} (ideally ~1.00)",
     ]
-    bands = report["mask_statistics"].get("mask_mass_per_frequency_band")
+    bands = report["mask_statistics"].get("mean_abs_mask_per_frequency_band")
     if bands:
-        lines += ["", "where each mask puts its energy (a bass mask should be low-heavy)"]
+        lines += ["", "mean |mask| per band (a bass mask should be heavier at low<200Hz)"]
         lines.append(f"{'stem':<8} {'low<200Hz':>10} {'200-2kHz':>10} {'>2kHz':>10}")
         for name in STEMS:
             b = bands[name]
-            lines.append(f"{name:<8} {b['low_<200Hz']:9.1%} {b['mid_200_2000Hz']:9.1%} "
-                         f"{b['high_>2kHz']:9.1%}")
+            lines.append(f"{name:<8} {b['low_<200Hz']:10.2f} {b['mid_200_2000Hz']:10.2f} "
+                         f"{b['high_>2kHz']:10.2f}")
     if report.get("reference_per_stem"):
         lines += ["", "estimates vs ground truth (a large centroid mismatch = leakage of "
                       "other instruments)"]

@@ -8,6 +8,11 @@ Training checkpoints keep the optimizer state (two Adam moments) and the *live* 
 which makes them ~160 MB. For inference only the EMA weights and the config are needed:
 this writes them in float32 (~42 MB, so it fits in a plain GitHub repository without
 Git LFS) together with the metrics measured for that checkpoint.
+
+`--weights live` exports the raw weights instead. The EMA is the better choice for a long
+run, but with `ema_decay: 0.999` a short run's average still contains a lot of the random
+initialisation, and then the live weights can win by several dB (`scripts/
+diagnose_checkpoint.py` reports both).
 """
 from __future__ import annotations
 
@@ -18,25 +23,37 @@ from pathlib import Path
 import torch
 
 
+def pick_weights(ckpt: dict, choice: str) -> tuple[dict, str]:
+    """Return (state_dict, label) for the requested weights."""
+    has_ema = bool(ckpt.get("ema"))
+    if choice == "ema" and not has_ema:
+        raise SystemExit("this checkpoint has no EMA weights; use --weights live")
+    use_live = choice == "live" or (choice == "auto" and not has_ema)
+    return (ckpt["model"], "live") if use_live else (ckpt["ema"], "ema")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("checkpoint")
     p.add_argument("--out", required=True)
     p.add_argument("--metrics", default=None,
                    help="optional JSON file with evaluation numbers to embed")
+    p.add_argument("--weights", default="auto", choices=("auto", "ema", "live"),
+                   help="which weights to export: 'auto' = EMA if the checkpoint has "
+                        "them, otherwise the live weights")
     p.add_argument("--half", action="store_true",
                    help="store the weights in float16 (halves the size, cast back to "
                         "float32 at load time)")
     args = p.parse_args()
 
     ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    weights = ckpt.get("ema") or ckpt["model"]
+    weights, label = pick_weights(ckpt, args.weights)
     if args.half:
         weights = {k: (v.half() if torch.is_floating_point(v) else v)
                    for k, v in weights.items()}
     payload = {
         "format": "spectrogram-unet-separator/1",
-        "weights": "ema" if ckpt.get("ema") else "live",
+        "weights": label,
         "dtype": "float16" if args.half else "float32",
         "state_dict": weights,
         "config": ckpt["config"],

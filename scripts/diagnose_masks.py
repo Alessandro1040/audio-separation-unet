@@ -28,7 +28,8 @@ Two questions are answered on deterministic validation chunks:
        T share         variance from the time profile alone       -> a fader
        F x T share     variance from the interaction              -> real separation:
                        only this can lift one instrument out of a bin another occupies
-       low/high        where the mask keeps energy (a bass mask must be low-heavy)
+       low/high        mean |mask| below 200 Hz and above 2 kHz (per bin, so the two are
+                       comparable: a bass mask must be heavier at low)
 """
 from __future__ import annotations
 
@@ -104,15 +105,18 @@ def mask_statistics(masks: torch.Tensor, sample_rate: int) -> dict[str, dict[str
         f_profile = mask.mean(dim=-1) - mask.mean()
         t_profile = mask.mean(dim=-2) - mask.mean()
         residual = mask - mask.mean() - f_profile[:, None] - t_profile[None, :]
-        energy = mask.pow(2).sum().clamp_min(1e-12)
         out[name] = {
             "mean": float(mask.mean()),
             "cv": float(mask.std(unbiased=False) / mask.mean().clamp_min(1e-8)),
             "var_freq": float(f_profile.var(unbiased=False) / max(total_var, 1e-12)),
             "var_time": float(t_profile.var(unbiased=False) / max(total_var, 1e-12)),
             "var_interaction": float(residual.var(unbiased=False) / max(total_var, 1e-12)),
-            "energy_low": float(mask[freqs < 200].pow(2).sum() / energy),
-            "energy_high": float(mask[freqs > 2000].pow(2).sum() / energy),
+            # Mean |mask| *per bin* in the two bands. A share of the total mask mass would be
+            # dominated by the number of bins in the band (~9 below 200 Hz, ~930 above
+            # 2 kHz), so every mask would look "high heavy"; these two numbers are directly
+            # comparable, and a bass mask has to be heavier at low.
+            "low": float(mask[freqs < 200].mean()),
+            "high": float(mask[freqs > 2000].mean()),
         }
     return out
 
@@ -189,17 +193,19 @@ def main() -> int:
         print(f"{name:<22} " + " ".join(f"{float(v):>7.2f}" for v in sdr)
               + f" {float(sdr.mean()):>7.2f}")
 
-    print("\npredicted mask: F/T/FxT are shares of its variance")
+    print("\npredicted mask: F/T/FxT are shares of its variance, low/high are mean |mask| "
+          "per bin")
     print(f"{'stem':<8} {'mean|m|':>8} {'cv':>6} {'F share':>8} {'T share':>8} "
           f"{'FxT':>6} {'low':>6} {'high':>6}")
     for name in STEMS:
         v = {k: value / n_chunks for k, value in mask_sum[name].items()}
         print(f"{name:<8} {v['mean']:8.3f} {v['cv']:6.2f} {v['var_freq']:8.2f} "
               f"{v['var_time']:8.2f} {v['var_interaction']:6.2f} "
-              f"{v['energy_low']:6.1%} {v['energy_high']:6.1%}")
-    print("\nA mask that only re-levels the mixture has cv ~ 0; a mask that really "
-          "separates\nputs its variance in the FxT term (the only term that can lift a "
-          "source out of a bin).")
+              f"{v['low']:6.2f} {v['high']:6.2f}")
+    print("\nA mask that only re-levels the mixture has cv ~ 0. A separator needs a spectral "
+          "tilt\nthat varies in time; the decisive rows are the SI-SDR ones above: compare "
+          "`model`\nwith `best fader` (volume automation) and with `oracle ideal mask` "
+          "(the ceiling).")
     return 0
 
 
