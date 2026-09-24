@@ -1,0 +1,54 @@
+stft:
+  n_fft: 2048
+  hop_length: 1024
+  win_length: null
+  center: true
+  window: hann
+model:
+  base_channels: 32
+  depth: 5
+  norm: batch
+  up_mode: bilinear
+  mask: tanh
+  dropout: 0.0
+data:
+  root: data/musdb18
+  sample_rate: 44100
+  channels: 2
+  chunk_seconds: 5.0
+  segment_seconds: 45.0
+  chunks_per_load: 6
+  valid_tracks: 14
+  cache_tracks: 6
+  num_workers: 4
+  aug:
+    gain_db: 6.0
+    channel_swap_p: 0.5
+    polarity_p: 0.5
+    stem_swap_p: 0.5
+    drop_source_p: 0.05
+    remix_p: 0.3
+loss:
+  waveform: 1.0
+  magnitude: 0.5
+  magnitude_compress: 0.3
+  si_sdr: 0.5
+  consistency: true
+train:
+  batch_size: 4
+  lr: 0.0001
+  weight_decay: 1.0e-05
+  epochs: 4
+  steps_per_epoch: 300
+  warmup_steps: 500
+  grad_clip: 5.0
+  amp: false
+  ema_decay: 0.999
+  max_hours: 0.35
+  seed: 1234
+  device: auto
+  out_dir: runs/unet
+  ckpt_dir: checkpoints
+  val_chunks: 28
+  val_every: 300
+  log_every: 25

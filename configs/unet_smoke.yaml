@@ -1,0 +1,48 @@
+# Tiny end-to-end configuration used by tests and `scripts/smoke_test.sh`.
+# It runs the real code path (real dataset class, real U-Net, real loss) on the
+# procedural dataset from src/data/synthetic.py, in well under a minute.
+stft:
+  n_fft: 1024
+  hop_length: 256
+  center: true
+
+model:
+  base_channels: 8
+  depth: 4
+  norm: batch
+  up_mode: bilinear
+  mask: tanh
+
+data:
+  root: data/synthetic
+  sample_rate: 22050
+  channels: 2
+  chunk_seconds: 2.0
+  segment_seconds: 0.0          # short synthetic songs: decode them whole
+  chunks_per_load: 2
+  valid_tracks: 1
+  cache_tracks: 2
+  num_workers: 0
+
+loss:
+  waveform: 1.0
+  magnitude: 0.5
+  magnitude_compress: 0.3
+  consistency: true
+
+train:
+  batch_size: 2
+  lr: 0.001
+  epochs: 2
+  steps_per_epoch: 30
+  warmup_steps: 10
+  grad_clip: 5.0
+  ema_decay: 0.99
+  max_hours: null
+  seed: 7
+  device: auto
+  out_dir: runs/smoke
+  ckpt_dir: checkpoints/smoke
+  val_chunks: 2
+  val_every: 30
+  log_every: 10

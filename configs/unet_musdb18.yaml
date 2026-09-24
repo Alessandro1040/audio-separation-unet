@@ -1,0 +1,61 @@
+# Reference recipe for MUSDB18 on Apple Silicon (MPS) or a single CUDA GPU.
+# STFT: 2048-sample window / 1024 hop -> a 1025 x T "image" per channel.
+# The hop is half the window (50% overlap), so reconstruction stays exact, while the
+# U-Net sees only 216 frames per 5-second crop: that is what makes training on a
+# laptop-class GPU possible (measured: ~20 seconds of audio per second of compute).
+stft:
+  n_fft: 2048
+  hop_length: 1024
+  center: true
+  window: hann
+
+model:
+  base_channels: 32
+  depth: 5
+  norm: batch
+  up_mode: bilinear
+  mask: tanh          # complex ideal ratio mask, predicted as (real, imag)
+  dropout: 0.0
+
+data:
+  root: data/musdb18
+  sample_rate: 44100
+  channels: 2
+  chunk_seconds: 5.0
+  valid_tracks: 14
+  segment_seconds: 45.0
+  chunks_per_load: 6
+  cache_tracks: 6
+  num_workers: 4
+  aug:
+    gain_db: 6.0
+    channel_swap_p: 0.5
+    polarity_p: 0.5
+    stem_swap_p: 0.5
+    drop_source_p: 0.05
+    remix_p: 0.3
+
+loss:
+  waveform: 1.0
+  magnitude: 0.5
+  magnitude_compress: 0.3
+  consistency: true
+
+train:
+  batch_size: 4
+  lr: 0.0003
+  weight_decay: 0.00001
+  epochs: 20           # x steps_per_epoch = 20k steps (~6 h at ~1 step/s on an M5)
+  steps_per_epoch: 1000
+  warmup_steps: 500
+  grad_clip: 5.0
+  amp: false
+  ema_decay: 0.999
+  max_hours: 6.5
+  seed: 1234
+  device: auto
+  out_dir: runs/unet
+  ckpt_dir: checkpoints
+  val_chunks: 28
+  val_every: 250
+  log_every: 25

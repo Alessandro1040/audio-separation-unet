@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Export a small, self-contained inference checkpoint from a training checkpoint.
+
+    python scripts/export_inference_checkpoint.py checkpoints/best.pt \
+        --out models/unet_musdb18_ema.pt
+
+Training checkpoints keep the optimizer state (two Adam moments) and the *live* weights,
+which makes them ~160 MB. For inference only the EMA weights and the config are needed:
+this writes them in float32 (~42 MB, so it fits in a plain GitHub repository without
+Git LFS) together with the metrics measured for that checkpoint.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import torch
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("checkpoint")
+    p.add_argument("--out", required=True)
+    p.add_argument("--metrics", default=None,
+                   help="optional JSON file with evaluation numbers to embed")
+    p.add_argument("--half", action="store_true",
+                   help="store the weights in float16 (halves the size, cast back to "
+                        "float32 at load time)")
+    args = p.parse_args()
+
+    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    weights = ckpt.get("ema") or ckpt["model"]
+    if args.half:
+        weights = {k: (v.half() if torch.is_floating_point(v) else v)
+                   for k, v in weights.items()}
+    payload = {
+        "format": "spectrogram-unet-separator/1",
+        "weights": "ema" if ckpt.get("ema") else "live",
+        "dtype": "float16" if args.half else "float32",
+        "state_dict": weights,
+        "config": ckpt["config"],
+        "stems": ckpt.get("stems", ["vocals", "drums", "bass", "other"]),
+        "step": ckpt.get("step"),
+        "validation_si_sdr_db": ckpt.get("best_sdr"),
+        "dataset": "MUSDB18 (train split, 86 songs; 14 held out for validation)",
+    }
+    if args.metrics and Path(args.metrics).exists():
+        payload["evaluation"] = json.loads(Path(args.metrics).read_text())
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, out)
+    size_mb = out.stat().st_size / 1e6
+    print(f"wrote {out} ({size_mb:.1f} MB, weights={payload['weights']}, "
+          f"dtype={payload['dtype']}, step={payload['step']})")
+    if size_mb > 95:
+        print("WARNING: over GitHub's 100 MB file limit; use --half or Git LFS")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

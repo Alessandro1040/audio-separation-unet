@@ -1,0 +1,26 @@
+chunk-average SI-SDR (5 s chunks, whole song) on the MUSDB18 test split
+========================================================================
+song                                      U-Net   mixture    delta
+AM Contra - Heart Peripheral             -11.37         -        -
+Al James - Schoolboy Facination           -3.46         -        -
+Angels In Amplifiers - I'm Alright        -4.28         -        -
+Arise - Run Run Run                       -7.31         -        -
+BKS - Bulldozer                           -6.87         -        -
+BKS - Too Much                            -8.74         -        -
+Ben Carrigan - We'll Talk About It All   -23.27         -        -
+Bobby Nobody - Stitch Up                  -7.85         -        -
+Buitraker - Revo X                        -8.78         -        -
+Carlos Gonzalez - A Place For Us         -10.67         -        -
+
+median over 10 songs
+  U-Net              :  -8.29 dB
+  mixture-estimator  :  -9.99 dB
+  improvement        :  +1.70 dB
+
+per-source median SI-SDR of the U-Net:
+  vocals   -16.76 dB
+  drums     -4.70 dB
+  bass      -5.43 dB
+  other     -3.56 dB
+
+seconds per song: 10.7

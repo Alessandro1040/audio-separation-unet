@@ -1,0 +1,14 @@
+# Runtime requirements. Install with:
+#     python -m pip install -r requirements.txt
+torch>=2.1
+torchaudio>=2.1
+numpy>=1.24
+scipy>=1.10
+soundfile>=0.12
+librosa>=0.10      # only used for convenience; the pipeline itself uses torchaudio/soundfile
+mir_eval>=0.8,<0.9       # BSS-Eval (SDR/SIR/SAR) implementation
+pyyaml>=6.0
+pandas>=2.0        # optional: easy inspection of runs/*/log.csv
+pytest>=7.0        # tests
+# External binaries:
+#   ffmpeg         - decodes the AAC-compressed MUSDB18 stems (brew install ffmpeg)
