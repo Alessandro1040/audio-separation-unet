@@ -70,6 +70,40 @@ Attenzione a due cose che ho sbagliato io stesso la prima volta: il checkpoint B
 default **non** è il migliore (ep368/ep317 lo battono) e i 4 stem non arrivano da lui, perché
 è a 2 stem; `--single_stem Drums` su un modello a 2 stem non produce nulla.
 
+## 3c. Costi reali misurati (perché un modello grande gira su un portatile)
+
+| | BS-RoFormer ep368 | HTDemucs | Mel-band RoFormer del repo |
+| --- | --- | --- | --- |
+| parametri | **159.8 M** (misurati: 159 758 796) | ~21 M | 2.75 M |
+| peso su disco | 639 MB (fp32) | 84 MB (fp32) | 11 MB |
+| RAM di picco (inferenza) | **1.00 GB** | **1.13 GB** | 0.3 GB |
+| 6 s di audio | 14.0 s (12 s di separazione) | **4.1 s (2 s di separazione)** | 0.2 s |
+| 24 s di audio | 57 s | 7 s | 0.5 s |
+
+Comandi con cui sono state prese (riproducibili):
+
+```bash
+/usr/bin/time -l audio-separator /tmp/clip.wav -m <modello> --output_dir /tmp/bench --output_format WAV
+python3 -c "import torch; s=torch.load('<ckpt>', weights_only=False); print(sum(v.numel() for v in s.values() if hasattr(v,'numel')))"
+```
+
+Come si legge:
+
+* **la memoria è parametri x byte per parametro**: 160 M in fp32 = 639 MB, cioè il 4 % dei
+  16 GB della macchina. In inferenza non servono né i gradienti né lo stato di Adam (che
+  triplicherebbe, come succede invece in training), quindi il modello "entra" senza problemi;
+* **la velocità non viene dal numero di parametri ma dai FLOP per secondo di audio**: il
+  modello da 21 M (convoluzioni, HTDemucs) è 3x più veloce del modello da 160 M (attention,
+  che è quadratica nella lunghezza del segmento). Il mio modello da 2.75 M è il più veloce di
+  tutti (0.2 s per 6 s), semplicemente perché è minuscolo;
+* **il lavoro viene fatto a segmenti**: il log di `audio-separator` mostra `0/9` su un brano
+  di 24 s, cioè il brano è tagliato in pezzi corti processati uno alla volta. Per questo la
+  RAM resta costante e non cresce con la durata del brano;
+* il costo è quasi tutto in **training**, non in inferenza: servono gradienti, attivazioni di
+  tutto il grafo e giorni di GPU. È esattamente il motivo per cui il modello del repo (6
+  minuti di addestramento, 2.75 M parametri) sta a −4 dB e quello preaddestrato a +11.8 dB:
+  stessa famiglia di architettura, 58 volte i parametri e mesi di calcolo di differenza.
+
 ## 4. L'insidia su Python 3.14
 
 `audio-separator` 0.47.0 dichiara `beartype>=0.18.5,<0.19.0`, e con quella versione fallisce
