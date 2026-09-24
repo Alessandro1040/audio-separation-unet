@@ -5,11 +5,12 @@ __pycache__/
 .venv/
 venv/
 
-# Datasets and artefacts (large, regenerable)
-data/
-outputs/
-runs/
-checkpoints/
+# Datasets and artefacts (large, regenerable). Anchored to the repository root on
+# purpose: an unanchored "data/" would also exclude the source package "src/data/".
+/data/
+/outputs/
+/runs/
+/checkpoints/
 
 # macOS
 .DS_Store
