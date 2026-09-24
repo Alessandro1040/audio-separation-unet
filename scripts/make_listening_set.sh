@@ -14,6 +14,10 @@
 #   --reference-dir D  folder holding vocals/drums/bass/other.(wav|flac|mp3|m4a) = ground truth
 #   --unet CKPT        U-Net checkpoint            (default models/unet_musdb18_ema.pt)
 #   --roformer CKPT    RoFormer checkpoint         (default: skipped, use "-" to skip explicitly)
+#   --pretrained NAME  a pretrained audio-separator model, e.g. htdemucs.yaml (4 stems) or
+#                      model_bs_roformer_ep_317_sdr_12.9755.ckpt (vocals+instrumental).
+#                      Needs `python3 -m pip install -U audio-separator beartype`.
+#                      This is the model that actually separates well - see docs/PRETRAINED.md.
 #   --start SECONDS    excerpt start               (default 0)
 #   --seconds SECONDS  excerpt length, 0 = whole file (default 30: long enough to judge,
 #                      short enough that a 5-minute song does not take 10 minutes)
@@ -35,6 +39,7 @@ OUT=""
 REFERENCE=""
 UNET="models/unet_musdb18_ema.pt"
 ROFORMER=""
+PRETRAINED=""
 START=0
 LENGTH=30
 CHUNK_UNET=10
@@ -49,6 +54,7 @@ while [ $# -gt 0 ]; do
         --reference-dir) REFERENCE="$2"; shift 2 ;;
         --unet) UNET="$2"; shift 2 ;;
         --roformer) ROFORMER="$2"; shift 2 ;;
+        --pretrained) PRETRAINED="$2"; shift 2 ;;
         --start) START="$2"; shift 2 ;;
         --seconds) LENGTH="$2"; shift 2 ;;
         --chunk-seconds) CHUNK_UNET="$2"; CHUNK_ROFORMER="$2"; shift 2 ;;
@@ -90,6 +96,19 @@ if [ -n "$ROFORMER" ] && [ "$ROFORMER" != "-" ]; then
         --out "$OUT/roformer" --device "$DEVICE" --chunk-seconds "$CHUNK_ROFORMER"
 fi
 
+if [ -n "$PRETRAINED" ] && [ "$PRETRAINED" != "-" ]; then
+    echo "== pretrained model: $PRETRAINED =="
+    if command -v audio-separator >/dev/null 2>&1; then
+        # names are pinned so the listening set is identical whatever the model outputs
+        audio-separator "$OUT/mixture.wav" -m "$PRETRAINED" --output_dir "$OUT/pretrained" \
+            --output_format WAV --sample_rate 44100 \
+            --custom_output_names '{"Vocals":"vocals","Drums":"drums","Bass":"bass","Other":"other","Instrumental":"instrumental","Guitar":"guitar","Piano":"piano"}'
+    else
+        echo "  audio-separator is not installed: python3 -m pip install -U audio-separator beartype" >&2
+        echo "  (see docs/PRETRAINED.md; on Python 3.14 the beartype upgrade is required)" >&2
+    fi
+fi
+
 if [ -n "$REFERENCE" ]; then
     echo "== ground truth: $REFERENCE =="
     for stem in vocals drums bass other; do
@@ -105,7 +124,7 @@ if [ -n "$REFERENCE" ]; then
 fi
 
 echo "== mp3 =="
-for f in "$OUT"/mixture.wav "$OUT"/unet/*.wav "$OUT"/roformer/*.wav; do
+for f in "$OUT"/mixture.wav "$OUT"/unet/*.wav "$OUT"/roformer/*.wav "$OUT"/pretrained/*.wav; do
     [ -f "$f" ] && encode "$f"
 done
 
