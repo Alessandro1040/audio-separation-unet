@@ -48,7 +48,7 @@ class AugmentConfig:
     gain_db: float = 6.0             # per-source random gain
     channel_swap_p: float = 0.5      # independently swap L/R per source
     polarity_p: float = 0.5          # randomly invert polarity per source
-    stem_swap_p: float = 0.5         # replace a stem with one from another song
+    stem_swap_p: float = 0.5         # replace a stem with the same stem of another song
     drop_source_p: float = 0.05      # silence one source entirely
     remix_p: float = 0.3             # replace *all* stems with another song's stems
 

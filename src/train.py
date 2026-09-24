@@ -68,12 +68,23 @@ class EMA:
             s.copy_(b)
 
 
-def lr_at(step: int, total: int, cfg: Config) -> float:
-    """Linear warm-up, then cosine decay to 5% of the peak learning rate."""
+def lr_at(step: int, total: int, cfg: Config, start_step: int = 0) -> float:
+    """Linear warm-up, then cosine decay to 5% of the peak learning rate.
+
+    The schedule is measured from `start_step`, which is 0 for a run from scratch and the
+    step a resumed run started from. Without that offset, `--resume checkpoints/last.pt`
+    on a finished schedule keeps the learning rate at its floor (~5e-6) and the extra
+    training does essentially nothing - the exact trap that makes "just train longer"
+    look like it has no effect.
+    """
+    rel_step = max(step - start_step, 0)
+    horizon = max(total - start_step, 1)
     warmup = max(cfg.train.warmup_steps, 1)
-    if step < warmup:
-        return cfg.train.lr * (step + 1) / warmup
-    progress = min(1.0, (step - warmup) / max(total - warmup, 1))
+    if start_step > 0:                      # a short re-warm-up, not a fresh 500 steps
+        warmup = min(warmup, max(horizon // 10, 1))
+    if rel_step < warmup:
+        return cfg.train.lr * (rel_step + 1) / warmup
+    progress = min(1.0, (rel_step - warmup) / max(horizon - warmup, 1))
     return cfg.train.lr * (0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * progress)))
 
 
@@ -201,6 +212,7 @@ def train(cfg: Config, resume: str | Path | None = None) -> Path:
 
     total_steps = cfg.train.epochs * cfg.train.steps_per_epoch
     step = 0
+    start_step = 0                      # >0 when resuming: the LR schedule restarts here
     best_sdr = -1e9
     if resume is not None:
         ckpt = torch.load(resume, map_location="cpu", weights_only=False)
@@ -210,6 +222,7 @@ def train(cfg: Config, resume: str | Path | None = None) -> Path:
         if ckpt.get("optimizer") is not None:
             optimizer.load_state_dict(ckpt["optimizer"])
         step = int(ckpt.get("step", 0))
+        start_step = step
         best_sdr = float(ckpt.get("best_sdr", -1e9))
         print(f"[train] resumed from {resume} at step {step} "
               f"(best SI-SDR {best_sdr:.2f} dB)", flush=True)
@@ -243,7 +256,7 @@ def train(cfg: Config, resume: str | Path | None = None) -> Path:
         t0 = time.time()
         mixture = batch["mixture"].to(device)
         stems = batch["stems"].to(device)
-        lr = lr_at(step, total_steps, cfg)
+        lr = lr_at(step, total_steps, cfg, start_step)
         for group in optimizer.param_groups:
             group["lr"] = lr
 

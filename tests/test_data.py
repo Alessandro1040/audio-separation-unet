@@ -5,8 +5,13 @@ import random
 
 import torch
 
-from src.config import DataConfig
-from src.data.chunks import MusdbEvalChunks, MusdbTrainIterable, collate_chunks
+from src.config import AugmentConfig, DataConfig
+from src.data.chunks import (
+    MusdbEvalChunks,
+    MusdbTrainIterable,
+    _augment,
+    collate_chunks,
+)
 from src.data.musdb import find_tracks, load_stems, split_train_valid
 from src.data.synthetic import STEMS, generate_dataset
 
@@ -64,6 +69,52 @@ def test_augmentation_changes_signal_but_keeps_shape(tmp_path) -> None:
     chunks = [dataset._sample(random.Random(i)) for i in range(4)]
     assert all(c.stems.shape == (4, 2, 22050) for c in chunks)
     assert not torch.allclose(chunks[0].stems, chunks[1].stems)
+
+
+def test_stem_swap_never_relabels_the_instruments() -> None:
+    """Head i must always predict stem i: the donor stem must have the *same* index.
+
+    Regression test for the bug that made the separator behave like a volume knob. The
+    swap used to take `j = rng.randrange(n_stems)`, so 3 times out of 4 it dropped a
+    different instrument into the slot (e.g. the drums of another song as the `vocals`
+    target). Nothing in the mixture reveals that substitution, so the targets for a head
+    became unpredictable and the loss-minimising answer was the conditional mean - a
+    per-source gain on the mixture instead of a separation.
+    """
+    n, sr = 2205, 22050                                   # 100 ms, one tone per stem
+    freqs = (180.0, 430.0, 1500.0, 5200.0)
+
+    def tagged(phase: float) -> torch.Tensor:
+        t = torch.arange(n) / sr
+        out = torch.zeros(len(freqs), 2, n)
+        for i, f in enumerate(freqs):
+            tone = torch.sin(2 * torch.pi * f * t + phase)
+            out[i, 0] = out[i, 1] = tone
+        return out
+
+    own, other = tagged(0.0), tagged(1.3)
+    aug = AugmentConfig(gain_db=0.0, channel_swap_p=0.0, polarity_p=0.0,
+                        stem_swap_p=0.5, drop_source_p=0.0, remix_p=0.0)
+
+    # every slot is replaced: the whole batch must be the donor song
+    out = _augment(own.clone(), AugmentConfig(stem_swap_p=1.0, gain_db=0.0,
+                                             channel_swap_p=0.0, polarity_p=0.0,
+                                             drop_source_p=0.0, remix_p=0.0),
+                   random.Random(0), other.clone())
+    assert torch.allclose(out, other)
+
+    # half the slots: each slot may hold own[i] or other[i], never another instrument
+    out = _augment(own.clone(), aug, random.Random(0), other.clone())
+    references = [(i, stem) for i in range(4) for stem in (own[i], other[i])]
+    for i in range(4):
+        slot = out[i].reshape(-1)
+        best, _score = max(
+            references,
+            key=lambda ref: abs(float(torch.dot(slot, ref[1].reshape(-1))
+                                      / (slot.norm() * ref[1].norm() + 1e-12))),
+        )
+        assert best == i, f"slot {i} ({STEMS[i]}) received another instrument"
+    assert not torch.allclose(out, own)                   # the swap did happen
 
 
 def test_eval_chunks_are_deterministic(tmp_path) -> None:

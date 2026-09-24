@@ -60,8 +60,13 @@ def _augment(
         n = min(stems.shape[-1], other_stems.shape[-1])
         for i in range(n_stems):
             if rng.random() < aug.stem_swap_p:
-                j = rng.randrange(other_stems.shape[0])
-                stems[i, :, :n] = other_stems[j, :, :n]
+                # The *same* stem index of the donor song. A random index here would
+                # relabel the targets (the drums of another song landing in the `vocals`
+                # slot): nothing in the mixture tells the network which instrument was
+                # substituted, so the only loss-minimising answer is the conditional
+                # mean - a per-source gain on the mixture. That is exactly the failure
+                # mode this augmentation must not create.
+                stems[i, :, :n] = other_stems[i, :, :n]
 
     if aug.gain_db > 0:
         gains = torch.tensor(
@@ -227,11 +232,3 @@ def collate_chunks(batch: list[Chunk]) -> dict[str, torch.Tensor | list[str]]:
         "mixture": torch.stack([c.mixture for c in batch]),
         "name": [c.name for c in batch],
     }
-
-    total = stems.shape[-1]
-    if total <= n_samples:
-        reps = math.ceil(n_samples / max(total, 1))
-        stems = stems.repeat(1, 1, reps)
-        total = stems.shape[-1]
-    start = rng.randrange(0, total - n_samples + 1)
-    return stems[..., start : start + n_samples]

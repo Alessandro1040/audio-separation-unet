@@ -1,7 +1,7 @@
 # Music source separation as image segmentation
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Alessandro1040/audio-separation-unet/blob/main/notebooks/separate_audio_with_unet.ipynb)
-[![tests](https://img.shields.io/badge/tests-28%20passed-brightgreen)](#5-tests)
+[![tests](https://img.shields.io/badge/tests-31%20passed-brightgreen)](#5-tests)
 
 **Audio → spectrogram → U-Net → masks → separated audio.**
 Upload any song to the Colab above, or run the app locally:
@@ -164,11 +164,13 @@ ground truth for one test song, as mp3.
 ## 5. Tests
 
 ```bash
-python -m pytest tests/ -q          # 28 tests, ~40 s on CPU
+python -m pytest tests/ -q          # 31 tests, ~1 min on CPU
 ```
 
 They cover the STFT round-trip (`istft(stft(x)) == x`), U-Net shapes/gradients, the
-mask/consistency algebra, the dataset and augmentation layer, BSS-Eval behaviour on
+mask/consistency algebra, the dataset and augmentation layer (including
+`test_stem_swap_never_relabels_the_instruments`, the regression test for the stem-swap bug
+that turned the first model into a volume knob), BSS-Eval behaviour on
 known cases, and a full end-to-end pipeline (train 6 steps → checkpoint → separate →
 evaluate) on a procedural dataset, so the whole path is testable **without** the 4.7 GB
 download:
@@ -189,7 +191,7 @@ python -m src.train --config configs/unet_smoke.yaml
 | **STFT 2048 / hop 1024 (50% overlap)** | a 46 ms window resolves pitch while the hop decides the cost. At 44.1 kHz the U-Net sees 216 frames per 5 s crop: measured ~4x faster than hop 512 with no real quality loss. Zero padding + exact framing makes `iSTFT(STFT(x)) = x` bit-exact (tested) |
 | **Hybrid loss: waveform L1 + compressed magnitude L1** | the waveform term is what Demucs-style systems use and correlates with perceptual quality; the `|X|^0.3` term stops quiet material (reverb tails, cymbals, breath) from being ignored |
 | **Mixture consistency** | the four estimates are projected so they sum back to the mixture (`est += (mix - sum(est))/4`). Free SDR, no training instability |
-| **Aggressive augmentation** | MUSDB18 train has only 100 songs: random gains, channel swaps, polarity flips, silencing a source, swapping one stem with a *different song's* stem, and full remixing. This is the most important regulariser here |
+| **Aggressive augmentation** | MUSDB18 train has only 100 songs: random gains, channel swaps, polarity flips, silencing a source, swapping one stem with the *same* stem of another song (never a different instrument - that would relabel the targets), and full remixing. This is the most important regulariser here |
 | **Segment decoding + chunk reuse** | songs are AAC-compressed; decoding a whole song per sample made the loader the bottleneck (5 s per batch!). Now a random 45 s slice is decoded once and 6 crops are taken from it (plus a 3-song "recent" pool for cross-song augmentation) → **103 s of audio/s**, 5x faster than the GPU |
 | **EMA weights + selection on validation SI-SDR** | the moving average is a free stability/quality win; the checkpoint is chosen on 14 held-out songs, never on test |
 | **BSS-Eval with 1 s frames, median** | the `museval` protocol used in the MUSDB18 literature, so numbers are comparable |
@@ -278,6 +280,11 @@ is the honest ceiling for this architecture. It doubles as an end-to-end self-te
 STFT framing, the stem/seek alignment or the BSS-Eval call were wrong, that number would
 collapse instead of landing at a plausible 8 dB.
 
+A companion measurement lives in *Why the shipped model "only changed the volumes"* below:
+`scripts/diagnose_masks.py` adds a per-source **best fader** (the optimal 50 ms
+time-varying gain on the mixture - the strongest thing "volume automation" can do) and
+reports what is inside the predicted masks. The shipped checkpoint does not clear it.
+
 ### Training curve (validation, EMA weights)
 
 ```
@@ -363,26 +370,100 @@ Separated audio to listen to: `outputs/test_eval2/<song>/{vocals,drums,bass,othe
 
 
 
-## 11. Reproducing the state of this repository
+### Why the shipped model "only changed the volumes" (and what was fixed)
+
+The four estimates of `models/unet_musdb18_ema.pt` sound like the same song at four
+different levels, and the measurement agrees. `scripts/diagnose_masks.py` (new) puts the
+network next to the strongest things a pure "volume knob" can do, on deterministic
+validation chunks:
+
+```
+estimator               vocals   drums    bass   other    mean
+model                    -4.25  -11.16    4.06   -6.42   -4.44
+mixture as estimate      -7.21  -11.32    0.47   -9.76   -6.96
+best static gain         -7.21  -11.32    0.47   -9.76   -6.96
+best fader               -3.46   -5.08    2.18   -7.80   -3.54   <- a fader beats it
+oracle ideal mask         9.89    1.85   12.00    5.21    7.24
+```
+
+and it shows what is inside the masks (F/T/FxT are shares of the mask's variance):
+
+```
+stem      mean|m|     cv  F share  T share    FxT    low   high
+vocals      0.176   0.26     0.75     0.03   0.22   0.3%  94.4%
+drums       0.198   0.34     0.79     0.04   0.17   0.7%  97.1%
+bass        0.118   1.01     0.96     0.01   0.03   1.8%  97.7%
+other       0.238   0.38     0.83     0.05   0.12   0.4%  89.9%
+```
+
+Almost all mask variance is a *frequency profile* (a fixed EQ), almost none is the FxT
+interaction that a separation needs, and the `bass` mask keeps 97.7 % of its energy above
+2 kHz - so it is not even the right EQ. Two defects produced this:
+
+1. **The stem-swap augmentation relabelled the targets.** `_augment` is documented as
+   "swapping a stem for the *same* stem of another song" (that is what teaches robustness
+   to unseen instrument combinations), but it drew the donor with
+   `j = rng.randrange(n_stems)`. With four sources that put a **different instrument in the
+   slot 3 times out of 4**: on 400 augmented batches, **36.5 % of all targets were the wrong
+   instrument** (`drums` content in the `vocals` slot, and so on). Nothing in the mixture
+   reveals that substitution, so the target of a head became partly unpredictable and the
+   loss-minimising answer is the conditional mean - a per-source gain on the mixture. The
+   swap now takes the same stem index, and the same measurement reports **0.0 %**.
+   Locked by `tests/test_data.py::test_stem_swap_never_relabels_the_instruments`.
+2. **A resumed run inherited a dead learning rate.** `lr_at(step, total, cfg)` measured the
+   cosine schedule from step 0, so resuming at step 900 of a 1200-step schedule restarted at
+   ~5e-6 (`runs/train_sdr.log`) and the "continue training" chain learned nothing while
+   looking like it ran for 300 more steps. The schedule is now measured from the resume
+   step, with a short re-warm-up (`tests/test_train.py`).
+
+Controlled A/B on the procedural dataset (`src/data/synthetic.py`, 600 steps, batch 4,
+identical seed/hyper-parameters, only `_augment` differs; validation SI-SDR in dB, EMA
+weights, the same held-out chunk):
+
+| step | old `_augment`, mean | fixed `_augment`, mean |
+| --- | --- | --- |
+| 100 | −10.02 dB | **−7.36 dB** |
+| 300 | −7.57 dB | **−5.63 dB** |
+| 600 | −6.74 dB | **−1.53 dB** |
+
+and per source at step 600 (the relabelled run never gets a source above 1 dB):
+
+| source | old `_augment` | fixed `_augment` |
+| --- | --- | --- |
+| vocals | −5.69 dB | **+1.34 dB** |
+| drums | −18.88 dB | −19.77 dB |
+| bass | +0.87 dB | **+11.65 dB** |
+| other | −3.26 dB | **+0.64 dB** |
+
+Both arms are dominated by `drums` (the procedural drums are noise bursts) and both are far
+from the oracle mask of the same chunks (≈ +13 dB mean), but the fixed arm wins on three
+sources from step 300 onwards and the gap on the mean grows to 5.2 dB. The raw logs ship in
+`results/ab_augment_fix/` (`ab_a_old_augment_log.csv`, `ab_b_fixed_augment_log.csv`); note
+that a rerun measures this on a single 2 s validation chunk, so treat the numbers as a
+trend, not as a benchmark.
+
+## 12. Reproducing the state of this repository
 
 ```bash
-python -m pytest tests/ -q                       # 28 tests
+python -m pytest tests/ -q                       # 31 tests
 python scripts/inspect_dataset.py --tracks 2     # dataset sanity check
 python scripts/check_dataloader.py --verify-alignment
 python scripts/diagnose_checkpoint.py checkpoints/best.pt --chunks 8   # live/EMA/oracle
+python scripts/diagnose_masks.py checkpoints/best.pt --chunks 4        # masks vs "volume knobs"
 python -m src.evaluate --checkpoint checkpoints/best.pt --limit 5
 ```
 
 `docs/PROPOSAL.md` frames the whole thing as a Computer Vision course project
 (what maps to which CV concept, realistic expectations, possible extensions).
-## 12. Going further (how to get a *strong* model on this laptop)
+## 13. Going further (how to get a *strong* model on this laptop)
 
 The shipped recipe targets ~20k steps (~6 h). If you want a genuinely good separator,
 the cheapest wins, in order:
 
-1. **Train longer.** The loss was still descending when this snapshot was taken. Resume
-   with a fresh, shorter cosine horizon so the learning rate anneals to its floor at the
-   new end of training:
+1. **Train longer.** The loss was still descending when this snapshot was taken. `--resume`
+   now re-measures the learning-rate schedule from the step you resume at (see
+   `lr_at(..., start_step)`), so a continued run anneals over the steps it is actually
+   going to take instead of starting at its floor:
 
    ```bash
    python -m src.train --config configs/unet_musdb18.yaml --resume checkpoints/last.pt \
