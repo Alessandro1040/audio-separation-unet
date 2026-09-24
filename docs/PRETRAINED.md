@@ -70,7 +70,44 @@ Attenzione a due cose che ho sbagliato io stesso la prima volta: il checkpoint B
 default **non** è il migliore (ep368/ep317 lo battono) e i 4 stem non arrivano da lui, perché
 è a 2 stem; `--single_stem Drums` su un modello a 2 stem non produce nulla.
 
-## 3c. Costi reali misurati (perché un modello grande gira su un portatile)
+## 3c. Cosa c'è davvero dentro i pesi (il test del silenzio)
+
+"159 milioni di parametri" non significa "159 milioni di numeri che descrivono un pianoforte
+o una chitarra": sono i parametri di una **funzione**. Se il suono di uno strumento fosse
+*contenuto* nel file, allora dandogli in pasto qualcosa che non contiene strumenti il modello
+dovrebbe comunque "tirarlo fuori". Test riproducibile (`bash /tmp/input_test.sh`):
+
+| ingresso al modello | uscita Vocals (rms) | uscita Instrumental (rms) |
+| --- | --- | --- |
+| silenzio digitale | **0.000000** | **0.000000** |
+| rumore bianco a −80 dBFS | 0.000000 | 0.000085 |
+| rumore bianco a −14 dBFS | 0.001391 | 0.180071 |
+
+E l'impronta del checkpoint è identica prima e dopo (`40780dd7…`): il modello **non impara
+nulla** da quello che gli dai, e **non conserva** nulla.
+
+Come si legge:
+
+* silenzio in ingresso → silenzio in uscita: **nessun pianoforte, nessuna chitarra
+  "sbuca"**. Se fossero immagazzinati, uscirebbero anche senza ingresso;
+* rumore in ingresso → rumore in uscita, con ampiezza proporzionale a quella dell'ingresso:
+  l'uscita è **calcolata dall'ingresso**, non pescata da un archivio;
+* l'md5 dei pesi non cambia: il file è di sola lettura, non è una memoria di ciò che ha visto.
+
+La parte in cui l'intuizione "il modello sa com'è fatta una chitarra" è **giusta**: i pesi
+codificano le *statistiche* che permettono di riconoscerla - "uno spettro con questa serie
+armonica, questo attacco, questa posizione stereo è probabilmente quella sorgente". Ma è
+conoscenza *condizionata all'ingresso* (una regola, una manopola), non una copia del suono:
+
+* non è localizzata: non esiste una "zona chitarra" del file da cui estrarre un timbro.
+  Metà dei parametri sono teste di maschera (decisioni), il resto MLP e attention (calcolo);
+* è distribuita e si aggiorna tutta insieme quando il modello impara: per migliorare un
+  timbro si riaddestra (o si fa fine-tuning di) tutta la rete, non si "riscrive" una parte;
+* proprio perché sono statistiche, funzionano su brani mai visti - è il motivo per cui il
+  modello ha separato il nostro estratto senza averlo mai ascoltato - e peggiorano fuori
+  dominio (master moderni, generi lontani da MUSDB18).
+
+## 3d. Costi reali misurati (perché un modello grande gira su un portatile)
 
 | | BS-RoFormer ep368 | HTDemucs | Mel-band RoFormer del repo |
 | --- | --- | --- | --- |
