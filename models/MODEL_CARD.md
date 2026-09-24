@@ -23,8 +23,8 @@ The first version of this file (step 1200 of `runs/unet`) did not separate anyth
 estimates were the mixture with a per-source gain. `scripts/diagnose_masks.py` measured it on
 validation chunks - the model reached **−3.94 dB** mean SI-SDR while the best per-source
 *fader* (the optimal 50 ms time-varying gain on the mixture, i.e. pure volume automation)
-reached **−2.55 dB**, and 96 % of the `bass` mask's variance was a fixed frequency profile
-with 97.8 % of its energy above 2 kHz.
+reached **−2.55 dB**. Inside the masks, 76-95 % of each mask's variance was a fixed frequency
+profile and only 0.01-0.05 of it varied with time: an EQ, not a separator.
 
 The cause was in the training *data*, not in the architecture: `_augment` swapped a stem with
 a *random* stem of the donor song instead of the same one, so three targets out of four
@@ -54,14 +54,20 @@ Per source (10 test songs): `drums` −3.69 dB, `other` −2.67 dB, `bass` −2.
 
 ## What the model actually learned (diagnostics from `src/analyze.py`)
 
-* The pipeline is exact: `sum(estimates) − mixture` residual ≈ **−148 dB**.
-* The masks are still close to frequency-agnostic: ~90 % of the mask mass sits above
-  2 kHz and the mean sum of the four masks is 0.74 ± 0.28 instead of ~1.0. So the
-  network separates mostly *temporally*, and instruments whose energy is concentrated in
-  a narrow band (bass) come out worst unless the song is bass-heavy in a way it saw in
-  training.
-* Interference, not artifacts, is the limiting factor (SAR +19 dB vs SIR −2.8 dB):
-  the estimates follow the target structure but still contain other sources.
+* The pipeline is exact: `sum(estimates) − mixture` residual ≈ **−147 dB**, and the four
+  masks now sum to **1.02 ± 0.24** per bin - a calibrated mask set. The step-1200 model was
+  at 0.74 ± 0.28, i.e. it was re-levelling rather than separating.
+* The masks have the tilts they should: `bass` is three times as heavy below 200 Hz as above
+  2 kHz (0.32 vs 0.11), `drums` is by far the most active mask (mean gain 0.47) and `other` /
+  `vocals` are more selective than before (cv 0.38 → 0.71 and 0.26 → 0.50). Most mask variance
+  is still the *frequency* profile (share 0.75-0.96), so this is not a perfect time-frequency
+  segmenter yet.
+* The `bass` estimate is still too bright on the example song (spectral centroid ~5 kHz
+  against 222 Hz for the reference) even though its SI-SDR now beats the fader: harmonic-rich
+  low content and leakage both push that number up.
+* Interference, not artifacts, is the limiting factor: the app reports SAR ≈ +13 dB against
+  SIR between −3.4 and +2.6 dB, i.e. the estimates follow the target structure but still
+  contain other sources.
 
 ## Intended use
 
