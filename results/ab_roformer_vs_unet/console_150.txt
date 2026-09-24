@@ -1,0 +1,29 @@
+== U-Net side (configs/unet_musdb18.yaml, architecture unchanged) ==
+[train] device=mps params=10.55M stems=('vocals', 'drums', 'bass', 'other') chunk=3.0s
+[train] step     25  loss=0.151  loss_wave=0.059  loss_mag=0.184  sec_per_step=0.323  lr=0.000  epoch=0
+[train] step     50  loss=0.138  loss_wave=0.047  loss_mag=0.183  sec_per_step=0.289  lr=0.000  epoch=0
+[train] step     75  loss=0.129  loss_wave=0.043  loss_mag=0.173  sec_per_step=0.290  lr=0.000  epoch=0
+[train] step    100  loss=0.121  loss_wave=0.039  loss_mag=0.164  sec_per_step=0.292  lr=0.000  epoch=0
+[train] step    125  loss=0.114  loss_wave=0.040  loss_mag=0.148  sec_per_step=0.290  lr=0.000  epoch=0
+[train] step    150  loss=0.112  loss_wave=0.038  loss_mag=0.148  sec_per_step=0.290  lr=0.000  epoch=1
+[valid] step    150  sdr_vocals=-14.70 dB  sdr_drums=-7.77 dB  sdr_bass=-4.24 dB  sdr_other=-4.67 dB  sdr_mean=-7.84 dB  val_loss=0.1311
+[valid] new best mean SI-SDR -7.84 dB -> checkpoints/ab_unet/best.pt
+[train] done: 150 steps in 0.02 h, best mean SI-SDR -7.84 dB
+
+== RoFormer side (configs/roformer_ab.yaml, matched settings) ==
+[train] device=mps arch=melband_roformer params=2.75M bands=82 band_width=32 chunk=3.0s
+[train] step     25  loss=0.159  loss_wave=0.060  loss_mag=0.199  sec_per_step=0.398  lr=0.000  epoch=0
+[train] step     50  loss=0.156  loss_wave=0.056  loss_mag=0.200  sec_per_step=0.431  lr=0.000  epoch=0
+[train] step     75  loss=0.135  loss_wave=0.044  loss_mag=0.181  sec_per_step=0.453  lr=0.000  epoch=0
+[train] step    100  loss=0.127  loss_wave=0.040  loss_mag=0.173  sec_per_step=0.471  lr=0.000  epoch=0
+[train] step    125  loss=0.119  loss_wave=0.042  loss_mag=0.155  sec_per_step=0.492  lr=0.000  epoch=0
+[train] step    150  loss=0.118  loss_wave=0.040  loss_mag=0.156  sec_per_step=0.490  lr=0.000  epoch=1
+[valid] step    150  sdr_vocals=-15.26 dB  sdr_drums=-9.72 dB  sdr_bass=-3.90 dB  sdr_other=-4.87 dB  sdr_mean=-8.44 dB  val_loss=0.1276
+[valid] new best mean SI-SDR -8.44 dB -> checkpoints/ab_roformer/best.pt
+[train] done: 150 steps in 0.02 h, best mean SI-SDR -8.44 dB
+
+== result ==
+unet      steps=150   hours=0.02 params=10.55M  best mean SI-SDR = -7.84 dB
+roformer  steps=150   hours=0.02 params=2.75M  best mean SI-SDR = -8.44 dB
+
+delta (roformer - unet) = -0.59 dB at an equal step budget  ->  U-Net ahead (short runs say nothing about the ceiling: see docs/ROFORMER.md)

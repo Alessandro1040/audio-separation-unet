@@ -1,0 +1,9 @@
+{
+  "arch": "melband_roformer",
+  "steps": 150,
+  "hours": 0.02333363367451562,
+  "best_sdr": -8.435972511768341,
+  "params": 2748672,
+  "bands": 82,
+  "device": "mps"
+}

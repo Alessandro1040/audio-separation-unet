@@ -1,0 +1,65 @@
+== U-Net side (configs/unet_musdb18.yaml, architecture unchanged) ==
+[train] device=mps params=10.55M stems=('vocals', 'drums', 'bass', 'other') chunk=3.0s
+[train] step     25  loss=0.151  loss_wave=0.059  loss_mag=0.184  sec_per_step=0.314  lr=0.000  epoch=0
+[train] step     50  loss=0.138  loss_wave=0.047  loss_mag=0.183  sec_per_step=0.305  lr=0.000  epoch=0
+[train] step     75  loss=0.129  loss_wave=0.043  loss_mag=0.173  sec_per_step=0.311  lr=0.000  epoch=0
+[train] step    100  loss=0.121  loss_wave=0.039  loss_mag=0.163  sec_per_step=0.316  lr=0.000  epoch=0
+[train] step    125  loss=0.113  loss_wave=0.040  loss_mag=0.146  sec_per_step=0.318  lr=0.000  epoch=0
+[train] step    150  loss=0.111  loss_wave=0.038  loss_mag=0.145  sec_per_step=0.325  lr=0.000  epoch=0
+[train] step    175  loss=0.113  loss_wave=0.039  loss_mag=0.148  sec_per_step=0.336  lr=0.000  epoch=0
+[train] step    200  loss=0.118  loss_wave=0.039  loss_mag=0.158  sec_per_step=0.347  lr=0.000  epoch=0
+[train] step    225  loss=0.119  loss_wave=0.042  loss_mag=0.153  sec_per_step=0.363  lr=0.000  epoch=0
+[train] step    250  loss=0.113  loss_wave=0.040  loss_mag=0.147  sec_per_step=0.401  lr=0.000  epoch=0
+[train] step    275  loss=0.115  loss_wave=0.041  loss_mag=0.149  sec_per_step=0.421  lr=0.000  epoch=0
+[train] step    300  loss=0.112  loss_wave=0.041  loss_mag=0.142  sec_per_step=0.417  lr=0.000  epoch=0
+[train] step    325  loss=0.115  loss_wave=0.044  loss_mag=0.142  sec_per_step=0.422  lr=0.000  epoch=0
+[train] step    350  loss=0.108  loss_wave=0.041  loss_mag=0.133  sec_per_step=0.434  lr=0.000  epoch=0
+[train] step    375  loss=0.098  loss_wave=0.036  loss_mag=0.125  sec_per_step=0.430  lr=0.000  epoch=0
+[train] step    400  loss=0.101  loss_wave=0.038  loss_mag=0.126  sec_per_step=0.422  lr=0.000  epoch=0
+[train] step    425  loss=0.099  loss_wave=0.035  loss_mag=0.127  sec_per_step=0.420  lr=0.000  epoch=0
+[train] step    450  loss=0.107  loss_wave=0.037  loss_mag=0.140  sec_per_step=0.413  lr=0.000  epoch=0
+[train] step    475  loss=0.100  loss_wave=0.032  loss_mag=0.136  sec_per_step=0.411  lr=0.000  epoch=0
+[train] step    500  loss=0.099  loss_wave=0.029  loss_mag=0.140  sec_per_step=0.410  lr=0.000  epoch=0
+[train] step    525  loss=0.095  loss_wave=0.030  loss_mag=0.129  sec_per_step=0.407  lr=0.000  epoch=0
+[train] step    550  loss=0.101  loss_wave=0.035  loss_mag=0.133  sec_per_step=0.412  lr=0.000  epoch=0
+[train] step    575  loss=0.106  loss_wave=0.039  loss_mag=0.133  sec_per_step=0.412  lr=0.000  epoch=0
+[train] step    600  loss=0.102  loss_wave=0.037  loss_mag=0.130  sec_per_step=0.412  lr=0.000  epoch=1
+[valid] step    600  sdr_vocals=-11.51 dB  sdr_drums=-8.67 dB  sdr_bass=-0.94 dB  sdr_other=-3.04 dB  sdr_mean=-6.04 dB  val_loss=0.1202
+[valid] new best mean SI-SDR -6.04 dB -> checkpoints/ab_unet600/best.pt
+[train] done: 600 steps in 0.07 h, best mean SI-SDR -6.04 dB
+
+== RoFormer side (configs/roformer_ab.yaml, matched settings) ==
+[train] device=mps arch=melband_roformer params=2.75M bands=82 band_width=32 chunk=3.0s
+[train] step     25  loss=0.159  loss_wave=0.060  loss_mag=0.199  sec_per_step=0.525  lr=0.000  epoch=0
+[train] step     50  loss=0.156  loss_wave=0.056  loss_mag=0.200  sec_per_step=0.517  lr=0.000  epoch=0
+[train] step     75  loss=0.135  loss_wave=0.044  loss_mag=0.181  sec_per_step=0.520  lr=0.000  epoch=0
+[train] step    100  loss=0.127  loss_wave=0.040  loss_mag=0.174  sec_per_step=0.515  lr=0.000  epoch=0
+[train] step    125  loss=0.119  loss_wave=0.041  loss_mag=0.156  sec_per_step=0.505  lr=0.000  epoch=0
+[train] step    150  loss=0.119  loss_wave=0.040  loss_mag=0.158  sec_per_step=0.516  lr=0.000  epoch=0
+[train] step    175  loss=0.120  loss_wave=0.039  loss_mag=0.161  sec_per_step=0.530  lr=0.000  epoch=0
+[train] step    200  loss=0.123  loss_wave=0.038  loss_mag=0.169  sec_per_step=0.536  lr=0.000  epoch=0
+[train] step    225  loss=0.122  loss_wave=0.042  loss_mag=0.162  sec_per_step=0.545  lr=0.000  epoch=0
+[train] step    250  loss=0.118  loss_wave=0.040  loss_mag=0.157  sec_per_step=0.545  lr=0.000  epoch=0
+[train] step    275  loss=0.118  loss_wave=0.040  loss_mag=0.158  sec_per_step=0.546  lr=0.000  epoch=0
+[train] step    300  loss=0.115  loss_wave=0.040  loss_mag=0.151  sec_per_step=0.557  lr=0.000  epoch=0
+[train] step    325  loss=0.119  loss_wave=0.044  loss_mag=0.150  sec_per_step=0.549  lr=0.000  epoch=0
+[train] step    350  loss=0.109  loss_wave=0.039  loss_mag=0.140  sec_per_step=0.540  lr=0.000  epoch=0
+[train] step    375  loss=0.103  loss_wave=0.035  loss_mag=0.136  sec_per_step=0.538  lr=0.000  epoch=0
+[train] step    400  loss=0.101  loss_wave=0.036  loss_mag=0.131  sec_per_step=0.541  lr=0.000  epoch=0
+[train] step    425  loss=0.102  loss_wave=0.034  loss_mag=0.135  sec_per_step=0.549  lr=0.000  epoch=0
+[train] step    450  loss=0.110  loss_wave=0.036  loss_mag=0.146  sec_per_step=0.543  lr=0.000  epoch=0
+[train] step    475  loss=0.103  loss_wave=0.031  loss_mag=0.145  sec_per_step=0.541  lr=0.000  epoch=0
+[train] step    500  loss=0.103  loss_wave=0.028  loss_mag=0.151  sec_per_step=0.540  lr=0.000  epoch=0
+[train] step    525  loss=0.098  loss_wave=0.029  loss_mag=0.137  sec_per_step=0.539  lr=0.000  epoch=0
+[train] step    550  loss=0.103  loss_wave=0.033  loss_mag=0.140  sec_per_step=0.547  lr=0.000  epoch=0
+[train] step    575  loss=0.107  loss_wave=0.037  loss_mag=0.141  sec_per_step=0.571  lr=0.000  epoch=0
+[train] step    600  loss=0.103  loss_wave=0.035  loss_mag=0.136  sec_per_step=0.566  lr=0.000  epoch=1
+[valid] step    600  sdr_vocals=-11.35 dB  sdr_drums=-6.97 dB  sdr_bass=-0.82 dB  sdr_other=-2.79 dB  sdr_mean=-5.49 dB  val_loss=0.1178
+[valid] new best mean SI-SDR -5.49 dB -> checkpoints/ab_roformer600/best.pt
+[train] done: 600 steps in 0.09 h, best mean SI-SDR -5.49 dB
+
+== result ==
+unet      steps=600   hours=0.07 params=10.55M  best mean SI-SDR = -6.04 dB
+roformer  steps=600   hours=0.09 params=2.75M  best mean SI-SDR = -5.49 dB
+
+delta (roformer - unet) = +0.55 dB at an equal step budget  ->  RoFormer ahead (short runs say nothing about the ceiling: see docs/ROFORMER.md)

@@ -1,0 +1,74 @@
+# Full Mel-band RoFormer recipe for MUSDB18 on a laptop (Apple M5 / 16 GB, MPS).
+#
+# Measured on that machine (scripts/benchmark_roformer.py, batch 2 x 3 s):
+#     params 3.41 M, 1.4 s per training step, ~7 GB of MPS allocator pool
+# which is the same order as the U-Net recipe (10.55 M params, ~1.2 s/step), so a run of a
+# few hours is feasible and directly comparable.
+#
+# Scale-up knobs if you have more memory/compute (the paper family uses all of them):
+#     model.dim: 192 -> 256, model.depth: 4 -> 8, data.chunk_seconds: 3 -> 6,
+#     train.batch_size: 2 -> 8, train.steps_per_epoch: 250 -> 2000
+stft:
+  n_fft: 2048
+  hop_length: 512
+  center: true
+
+model:
+  dim: 128              # the paper's 192-256 needs a bigger machine
+  depth: 4
+  heads: 4
+  ff_mult: 4
+  n_bands: 64           # mel bands; wide ones are split to <= max_band_bins
+  band_overlap: 0.25
+  fmin: 30.0
+  fmax: null            # null = up to Nyquist (every bin gets a mask)
+  max_band_bins: 32
+  n_fft_extra: 1024     # the multi-resolution input (MDX23 trick)
+  mask: tanh            # complex ratio mask, same convention as the U-Net
+  per_channel_mask: false
+  dropout: 0.0
+
+data:
+  root: data/musdb18
+  sample_rate: 44100
+  channels: 2
+  chunk_seconds: 3.0
+  segment_seconds: 45.0
+  chunks_per_load: 6
+  valid_tracks: 14
+  cache_tracks: 8
+  num_workers: 4
+  aug:
+    gain_db: 6.0
+    channel_swap_p: 0.5
+    polarity_p: 0.5
+    stem_swap_p: 0.5
+    drop_source_p: 0.05
+    remix_p: 0.3
+
+loss:
+  waveform: 1.0
+  magnitude: 0.0
+  mrstft: 1.0
+  mrstft_ffts: [2048, 1024, 512, 256]
+  mrstft_log_weight: 1.0
+  consistency: true
+
+train:
+  batch_size: 2
+  lr: 0.0003
+  weight_decay: 0.00001
+  epochs: 120
+  steps_per_epoch: 400
+  warmup_steps: 500
+  grad_clip: 5.0
+  amp: false
+  ema_decay: 0.999
+  max_hours: null
+  seed: 1234
+  device: auto
+  out_dir: runs/roformer
+  ckpt_dir: checkpoints_roformer
+  val_chunks: 12
+  val_every: 400
+  log_every: 25

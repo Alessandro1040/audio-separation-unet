@@ -1,0 +1,72 @@
+# Short, controlled A/B: Mel-band RoFormer vs the U-Net, only the architecture differs.
+#
+# Everything that is not the architecture is deliberately identical to
+# `configs/unet_musdb18.yaml`: the STFT (2048 / 1024, 50 % overlap), the augmentation, the
+# loss (waveform L1 + compressed-magnitude L1: `mrstft: 0.0`, `magnitude: 0.5`), the
+# optimizer, the warm-up, the EMA and the validation set (the same 14 held-out songs).
+# `scripts/ab_roformer_vs_unet.sh` runs both sides with the same number of steps, batch
+# size and chunk length, and prints the two best validation SI-SDRs.
+stft:
+  n_fft: 2048
+  hop_length: 1024
+  center: true
+  window: hann
+
+model:
+  dim: 128
+  depth: 4
+  heads: 4
+  ff_mult: 4
+  n_bands: 64
+  band_overlap: 0.25
+  fmin: 30.0
+  fmax: null
+  max_band_bins: 32
+  n_fft_extra: 1024
+  mask: tanh
+  per_channel_mask: false
+  dropout: 0.0
+
+data:
+  root: data/musdb18
+  sample_rate: 44100
+  channels: 2
+  chunk_seconds: 3.0
+  segment_seconds: 45.0
+  chunks_per_load: 6
+  valid_tracks: 14
+  cache_tracks: 6
+  num_workers: 2
+  aug:
+    gain_db: 6.0
+    channel_swap_p: 0.5
+    polarity_p: 0.5
+    stem_swap_p: 0.5
+    drop_source_p: 0.05
+    remix_p: 0.3
+
+loss:
+  waveform: 1.0
+  magnitude: 0.5          # the U-Net's spectral term ...
+  magnitude_compress: 0.3
+  mrstft: 0.0             # ... and NOT the multi-resolution one, so the loss is the same
+  consistency: true
+
+train:
+  batch_size: 2
+  lr: 0.0003
+  weight_decay: 0.00001
+  epochs: 1
+  steps_per_epoch: 150
+  warmup_steps: 50
+  grad_clip: 5.0
+  amp: false
+  ema_decay: 0.99
+  max_hours: null
+  seed: 1234
+  device: auto
+  out_dir: runs/ab_roformer
+  ckpt_dir: checkpoints/ab_roformer
+  val_chunks: 8
+  val_every: 150
+  log_every: 25

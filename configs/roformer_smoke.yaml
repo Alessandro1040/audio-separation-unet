@@ -1,0 +1,61 @@
+# Tiny end-to-end configuration for the Mel-band RoFormer (tests + a quick sanity run).
+#
+# Same data/schedule shape as configs/unet_smoke.yaml, so the two smoke runs are directly
+# comparable, but with the RoFormer-specific knobs: a small band-split transformer, no
+# second STFT resolution (n_fft_extra: 0) and the multi-resolution loss switched off in
+# favour of the U-Net's compressed-magnitude term (so a short run is not dominated by the
+# four extra STFTs).
+stft:
+  n_fft: 1024
+  hop_length: 256
+  center: true
+
+model:
+  dim: 64
+  depth: 2
+  heads: 4
+  ff_mult: 2
+  n_bands: 16
+  band_overlap: 0.25
+  fmin: 30.0
+  fmax: null            # null = up to Nyquist
+  max_band_bins: 32
+  n_fft_extra: 0        # single resolution (fast smoke runs)
+  mask: tanh
+  per_channel_mask: false
+  dropout: 0.0
+
+data:
+  root: data/synthetic
+  sample_rate: 22050
+  channels: 2
+  chunk_seconds: 2.0
+  segment_seconds: 0.0          # short synthetic songs: decode them whole
+  chunks_per_load: 2
+  valid_tracks: 1
+  cache_tracks: 2
+  num_workers: 0
+
+loss:
+  waveform: 1.0
+  magnitude: 0.5
+  magnitude_compress: 0.3
+  mrstft: 0.0
+  consistency: true
+
+train:
+  batch_size: 2
+  lr: 0.001
+  epochs: 2
+  steps_per_epoch: 30
+  warmup_steps: 10
+  grad_clip: 5.0
+  ema_decay: 0.99
+  max_hours: null
+  seed: 7
+  device: auto
+  out_dir: runs/roformer_smoke
+  ckpt_dir: checkpoints/roformer_smoke
+  val_chunks: 2
+  val_every: 30
+  log_every: 10
