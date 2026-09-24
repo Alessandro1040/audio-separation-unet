@@ -550,6 +550,7 @@ what more training can buy here, and the `--resume` path that makes that afforda
 
 ```bash
 python -m pytest tests/ -q                       # 31 tests
+python scripts/check_separation.py               # which checkpoint, and is it separating?
 python scripts/inspect_dataset.py --tracks 2     # dataset sanity check
 python scripts/check_dataloader.py --verify-alignment
 python scripts/diagnose_checkpoint.py checkpoints/best.pt --chunks 8   # live/EMA/oracle
